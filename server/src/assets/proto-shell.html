@@ -1,0 +1,2280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>原型</title>
+__PF_TAILWIND__
+<style>
+  html, body { height: 100%; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .pf-nav-item { cursor: pointer; }
+  .pf-nav-item.active { font-weight: 600; }
+  .pf-nav-item.pending { opacity: .55; cursor: wait; }
+  .pf-badge-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--pf-primary); }
+  .pf-badge-dot.pf-dot-error { background: var(--pf-danger); }
+  .pf-drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 60; }
+  .pf-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92vw; background: var(--pf-bg-surface); z-index: 61;
+    box-shadow: -8px 0 30px rgba(0,0,0,.12); display: flex; flex-direction: column; }
+  .pf-md h1 { font-size: 1.25rem; font-weight: 700; margin: 1em 0 .5em; }
+  .pf-md h2 { font-size: 1.1rem; font-weight: 700; margin: 1em 0 .5em; }
+  .pf-md h3 { font-size: 1rem; font-weight: 600; margin: .9em 0 .4em; }
+  .pf-md p { margin: .5em 0; line-height: 1.8; }
+  .pf-md ul { list-style: disc; padding-left: 1.4em; margin: .5em 0; }
+  .pf-md ol { list-style: decimal; padding-left: 1.4em; margin: .5em 0; }
+  .pf-md li { margin: .25em 0; line-height: 1.7; }
+  .pf-md table { border-collapse: collapse; width: 100%; margin: .7em 0; font-size: 13px; }
+  .pf-md th, .pf-md td { border: 1px solid var(--pf-border); padding: 6px 10px; text-align: left; }
+  .pf-md th { background: var(--pf-bg-subtle); }
+  .pf-md code { background: var(--pf-bg-hover); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .pf-md pre { background: var(--pf-bg-subtle); padding: 10px; border-radius: 6px; overflow-x: auto; }
+  .pf-toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 90;
+    padding: 10px 20px; border-radius: 8px; color: var(--pf-on-accent, #fff); font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.18); max-width: 70vw; }
+  /* 标注模式：圈选器驱动（hover 浮层高亮 + 粒度拨杆），不再全量描边 */
+  .pf-annot-mode #pf-page-root, .pf-annot-mode #pf-page-root * { cursor: crosshair !important; }
+  .pf-pick-overlay {
+    position: fixed; z-index: 9998; pointer-events: none;
+    border: 2px solid var(--pf-annot, #f97316);
+    background: rgba(249,115,22,.08);
+    border-radius: 6px;
+    transition: all .06s ease-out;
+    box-shadow: 0 0 0 1px rgba(249,115,22,.25);
+  }
+  .pf-pick-bar {
+    position: fixed; z-index: 9999;
+    display: none; align-items: center; gap: 4px;
+    background: #1f2430; color: #fff;
+    border-radius: 8px; padding: 4px;
+    font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  .pf-pick-bar .pf-pick-label { color: #ffd9b8; padding: 0 8px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-pick-bar button {
+    border: none; background: transparent; color: #c7ccda; cursor: pointer;
+    padding: 4px 9px; border-radius: 5px; font-size: 12px; white-space: nowrap;
+  }
+  .pf-pick-bar button:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .pf-pick-bar button.active { background: var(--pf-annot, #f97316); color: #fff; font-weight: 600; }
+  .pf-pick-bar .pf-pick-hint { color: #7c8296; padding: 0 8px 0 4px; font-size: 11px; }
+  /* 已标注元素角标 */
+  .pf-ann-badge {
+    position: absolute; z-index: 9997; transform: translate(6px,-6px);
+    background: var(--pf-annot, #f97316); color: #fff;
+    font-size: 10px; font-weight: 700; line-height: 1;
+    min-width: 16px; height: 16px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; padding: 0 4px;
+    cursor: pointer; pointer-events: auto; box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .pf-ann-badge.pending { background: var(--pf-annot, #f97316); }
+  .pf-ann-badge.done { background: #94a0b4; }
+  .pf-ann-target { outline: 2px solid rgba(249,115,22,.45); outline-offset: 1px; }
+
+  /* ============================================================
+     ProtoForge 主题系统（生成页与壳共用；data-theme 在 <html>）
+     ============================================================ */
+  :root {
+    /* 明亮 SaaS（默认） */
+    --pf-primary:#6366F1; --pf-primary-hover:#5558E3; --pf-primary-soft:#EEF0FE; --pf-primary-contrast:#fff;
+    --pf-bg-app:#F6F7F9; --pf-bg-surface:#fff; --pf-bg-subtle:#FBFBFD; --pf-bg-hover:#F3F4F8; --pf-bg-muted:#F1F3F7;
+    --pf-primary-bg:#EEF0FE; --pf-primary-text:#4F46E5; --pf-text-inverse:#fff;
+    --pf-border:#E7E8EE; --pf-border-strong:#DCDFE7;
+    --pf-text-1:#1A1D29; --pf-text-2:#5B6172; --pf-text-3:#9AA0B0;
+    --pf-success:#10B981; --pf-success-bg:#E7F8F1; --pf-success-text:#0E8A63;
+    --pf-warning:#F59E0B; --pf-warning-bg:#FEF3E2; --pf-warning-text:#B9740A;
+    --pf-danger:#EF4444;  --pf-danger-bg:#FDECEC;  --pf-danger-text:#D12F2F;
+    --pf-info:#6366F1;   --pf-info-bg:#EEF0FE;   --pf-info-text:#4F46E5;
+    --pf-chart-1:#6366F1; --pf-chart-2:#8B5CF6; --pf-chart-3:#10B981; --pf-chart-4:#F59E0B; --pf-chart-5:#EF4444; --pf-chart-6:#0EA5E9;
+    --pf-r-sm:6px; --pf-r-md:10px; --pf-r-lg:14px;
+    --pf-shadow-xs:0 1px 2px rgba(16,24,40,.04);
+    --pf-shadow-sm:0 2px 8px rgba(16,24,40,.06);
+    --pf-shadow-md:0 8px 24px rgba(16,24,40,.08);
+    --pf-sidebar-bg:#fff; --pf-sidebar-border:#E7E8EE; --pf-sidebar-text:#5B6172;
+    --pf-sidebar-active-bg:#EEF0FE; --pf-sidebar-active-text:#4F46E5;
+    --pf-topbar-bg:rgba(255,255,255,.85);
+    --pf-density-pad:18px; --pf-density-gap:16px;
+    --pf-font-num:inherit; --pf-btn-radius:10px;
+    --pf-annot:#f97316; --pf-annot-strong:#ea580c;
+    /* 语义渐变（走 token，随主题换肤；AI 不许裸写渐变/颜色） */
+    --pf-grad-brand:linear-gradient(135deg,#818CF8 0%,#6366F1 55%,#5B54E8 100%);
+    --pf-grad-hero:linear-gradient(135deg,#4F46E5 0%,#6366F1 45%,#8B5CF6 100%);
+    --pf-grad-hero-2:radial-gradient(120% 140% at 85% -10%,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 55%);
+    --pf-grad-soft:linear-gradient(135deg,#EEF0FE 0%,#F3F0FE 100%);
+    --pf-hero-text:#fff; --pf-hero-sub:rgba(255,255,255,.82);
+    --pf-on-accent:#fff; /* 压在 accent 实色（按钮/toast）上的文字色 */
+    --pf-hero-cta-text:#4F46E5; /* hero 反白控件（白按钮/白搜索框）在白底上的文字色，需够深 */
+    --pf-hero-cta-ink:#1A1D29; /* 白搜索框内输入文字（恒白底，用恒定深色） */
+  }
+  [data-theme="dark"] {
+    --pf-primary:#38BDF8; --pf-primary-hover:#7DD3FC; --pf-primary-soft:rgba(56,189,248,.14); --pf-primary-contrast:#062633;
+    --pf-bg-app:#0B1220; --pf-bg-surface:#131C2E; --pf-bg-subtle:#0F1727; --pf-bg-hover:#1B2740; --pf-bg-muted:#1B2740;
+    --pf-primary-bg:rgba(56,189,248,.14); --pf-primary-text:#7DD3FC; --pf-text-inverse:#062633;
+    --pf-border:#243049; --pf-border-strong:#33415E;
+    --pf-text-1:#E8EDF7; --pf-text-2:#9AA8C2; --pf-text-3:#64748B;
+    --pf-success:#34D399; --pf-success-bg:rgba(52,211,153,.13); --pf-success-text:#6EE7B7;
+    --pf-warning:#FBBF24; --pf-warning-bg:rgba(251,191,36,.13); --pf-warning-text:#FCD34D;
+    --pf-danger:#F87171;  --pf-danger-bg:rgba(248,113,113,.13);  --pf-danger-text:#FCA5A5;
+    --pf-info:#818CF8;   --pf-info-bg:rgba(129,140,248,.15);  --pf-info-text:#A5B4FC;
+    --pf-chart-1:#38BDF8; --pf-chart-2:#818CF8; --pf-chart-3:#34D399; --pf-chart-4:#FBBF24; --pf-chart-5:#F87171; --pf-chart-6:#2DD4BF;
+    --pf-shadow-xs:0 1px 2px rgba(0,0,0,.3);
+    --pf-shadow-sm:0 4px 14px rgba(0,0,0,.35);
+    --pf-shadow-md:0 12px 32px rgba(0,0,0,.45);
+    --pf-sidebar-bg:#0E1626; --pf-sidebar-border:#1C2740; --pf-sidebar-text:#8B99B5;
+    --pf-sidebar-active-bg:rgba(56,189,248,.13); --pf-sidebar-active-text:#7DD3FC;
+    --pf-topbar-bg:rgba(14,22,38,.85);
+    --pf-font-num:"SF Mono",ui-monospace,Menlo,monospace;
+    --pf-grad-brand:linear-gradient(135deg,#38BDF8 0%,#6366F1 100%);
+    --pf-grad-hero:linear-gradient(135deg,rgba(14,165,233,.6) 0%,rgba(59,130,246,.6) 50%,rgba(99,102,241,.6) 100%);
+    --pf-grad-hero-2:radial-gradient(120% 140% at 85% -10%,rgba(255,255,255,.14) 0%,rgba(255,255,255,0) 55%);
+    --pf-grad-soft:linear-gradient(135deg,rgba(56,189,248,.12) 0%,rgba(99,102,241,.12) 100%);
+    --pf-hero-text:#F0F7FF; --pf-hero-sub:rgba(224,237,255,.8);
+    --pf-on-accent:#062633; /* dark 的 accent 是浅色，配深字 */
+    --pf-hero-cta-text:#0369A1; /* 深青，白底可读 */
+  }
+  [data-theme="finance"] {
+    --pf-primary:#1E3A5F; --pf-primary-hover:#16304F; --pf-primary-soft:#EAF0F6; --pf-primary-contrast:#fff;
+    --pf-bg-app:#F2F4F7; --pf-bg-surface:#fff; --pf-bg-subtle:#F7F9FB; --pf-bg-hover:#EDF0F4; --pf-bg-muted:#E9EDF2;
+    --pf-primary-bg:#EAF0F6; --pf-primary-text:#1E3A5F; --pf-text-inverse:#fff;
+    --pf-border:#DDE2E8; --pf-border-strong:#C8D0DA;
+    --pf-text-1:#1F2733; --pf-text-2:#4A5568; --pf-text-3:#8A94A6;
+    --pf-success:#2F7D5B; --pf-success-bg:#E8F3EE; --pf-success-text:#27694D;
+    --pf-warning:#B07D2B; --pf-warning-bg:#F7F0E0; --pf-warning-text:#946824;
+    --pf-danger:#B4372E;  --pf-danger-bg:#F8ECEB;  --pf-danger-text:#992D26;
+    --pf-info:#1E3A5F;   --pf-info-bg:#EAF0F6;   --pf-info-text:#1E3A5F;
+    --pf-chart-1:#2E5A8C; --pf-chart-2:#4C7AA8; --pf-chart-3:#2F7D5B; --pf-chart-4:#B07D2B; --pf-chart-5:#B4372E; --pf-chart-6:#7C8DA6;
+    --pf-r-sm:4px; --pf-r-md:6px; --pf-r-lg:8px;
+    --pf-shadow-xs:0 1px 2px rgba(15,23,42,.05);
+    --pf-shadow-sm:0 1px 3px rgba(15,23,42,.06);
+    --pf-shadow-md:0 4px 14px rgba(15,23,42,.08);
+    --pf-sidebar-bg:#16293F; --pf-sidebar-border:#16293F; --pf-sidebar-text:#9FB2C6;
+    --pf-sidebar-active-bg:rgba(255,255,255,.09); --pf-sidebar-active-text:#fff;
+    --pf-topbar-bg:rgba(255,255,255,.9);
+    --pf-density-pad:14px; --pf-density-gap:12px;
+    --pf-font-num:"SF Mono",ui-monospace,Menlo,monospace; --pf-btn-radius:6px;
+    --pf-grad-brand:linear-gradient(135deg,#2E5A8C 0%,#1E3A5F 100%);
+    --pf-grad-hero:linear-gradient(135deg,#16294A 0%,#1E3A5F 50%,#2E5A8C 100%);
+    --pf-grad-hero-2:radial-gradient(120% 140% at 85% -10%,rgba(255,255,255,.12) 0%,rgba(255,255,255,0) 55%);
+    --pf-grad-soft:linear-gradient(135deg,#EAF0F6 0%,#EEF3F8 100%);
+    --pf-hero-text:#fff; --pf-hero-sub:rgba(226,236,248,.82);
+    --pf-on-accent:#fff;
+    --pf-hero-cta-text:#1E3A5F;
+  }
+  [data-theme="consumer"] {
+    --pf-primary:#FF6B5B; --pf-primary-hover:#FF5746; --pf-primary-soft:#FFEDEB; --pf-primary-contrast:#fff;
+    --pf-bg-app:#FAF7F4; --pf-bg-surface:#fff; --pf-bg-subtle:#FDFAF7; --pf-bg-hover:#F6F0EA; --pf-bg-muted:#F3ECE4;
+    --pf-primary-bg:#FFEDEB; --pf-primary-text:#E04A3A; --pf-text-inverse:#fff;
+    --pf-border:#F0E7E0; --pf-border-strong:#E7DCD2;
+    --pf-text-1:#2B2320; --pf-text-2:#6F625B; --pf-text-3:#AB9E96;
+    --pf-success:#22C08A; --pf-success-bg:#E4F8F0; --pf-success-text:#159A6E;
+    --pf-warning:#FFA92D; --pf-warning-bg:#FFF3E0; --pf-warning-text:#D98A12;
+    --pf-danger:#FF5A6E;  --pf-danger-bg:#FFEBEE;  --pf-danger-text:#E03E54;
+    --pf-info:#8B6CF6;   --pf-info-bg:#F0EBFE;   --pf-info-text:#7350E8;
+    --pf-chart-1:#FF6B5B; --pf-chart-2:#8B6CF6; --pf-chart-3:#22C08A; --pf-chart-4:#FFA92D; --pf-chart-5:#FF5A6E; --pf-chart-6:#38BDF8;
+    --pf-r-sm:10px; --pf-r-md:16px; --pf-r-lg:20px;
+    --pf-shadow-xs:0 2px 6px rgba(180,120,90,.06);
+    --pf-shadow-sm:0 6px 18px rgba(255,107,91,.10);
+    --pf-shadow-md:0 14px 36px rgba(255,107,91,.16);
+    --pf-sidebar-bg:#fff; --pf-sidebar-border:#F0E7E0; --pf-sidebar-text:#6F625B;
+    --pf-sidebar-active-bg:#FFEDEB; --pf-sidebar-active-text:#E84D3D;
+    --pf-topbar-bg:rgba(255,255,255,.8);
+    --pf-density-pad:22px; --pf-density-gap:20px; --pf-btn-radius:14px;
+    --pf-grad-brand:linear-gradient(135deg,#FF8A5C 0%,#FF5E7A 100%);
+    --pf-grad-hero:linear-gradient(135deg,#FF6B5B 0%,#FF5E7A 50%,#FF8A5C 100%);
+    --pf-grad-hero-2:radial-gradient(120% 140% at 85% -10%,rgba(255,255,255,.2) 0%,rgba(255,255,255,0) 55%);
+    --pf-grad-soft:linear-gradient(135deg,#FFEDEB 0%,#FFF3E0 100%);
+    --pf-hero-text:#fff; --pf-hero-sub:rgba(255,255,255,.85);
+    --pf-on-accent:#fff;
+    --pf-hero-cta-text:#E84D3D;
+  }
+
+  body { background: var(--pf-bg-app); color: var(--pf-text-1); transition: background .25s, color .25s; }
+  .pf-num { font-family: var(--pf-font-num); font-variant-numeric: tabular-nums; }
+  .pf-brand-mark {
+    width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+    background: var(--pf-grad-brand);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 8px color-mix(in srgb, var(--pf-primary) 30%, transparent); overflow: hidden;
+  }
+  .pf-brand-mark svg { width: 26px; height: 26px; }
+
+  /* ---------- 壳：侧栏 / 顶栏 token 化 ---------- */
+  .pf-shell-sidebar { background: var(--pf-sidebar-bg); border-right: 1px solid var(--pf-sidebar-border); transition: background .25s, border-color .25s; }
+  .pf-shell-brand { border-bottom: 1px solid var(--pf-border); }
+  .pf-shell-brand #pf-appname { color: var(--pf-text-1); }
+  [data-theme="finance"] .pf-shell-brand #pf-appname { color: #fff; }
+  .pf-shell-brand .pf-shell-sub { color: var(--pf-text-3); }
+  [data-theme="finance"] .pf-shell-brand .pf-shell-sub { color: #7E93AB; }
+  .pf-shell-topbar { background: var(--pf-topbar-bg); backdrop-filter: blur(10px); border-bottom: 1px solid var(--pf-border); }
+  #pf-page-title { color: var(--pf-text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+  .pf-nav-item { color: var(--pf-sidebar-text); border-radius: var(--pf-r-sm); }
+  .pf-nav-item:hover { background: var(--pf-bg-hover); color: var(--pf-text-1); }
+  [data-theme="finance"] .pf-nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .pf-nav-item.active { background: var(--pf-sidebar-active-bg); color: var(--pf-sidebar-active-text); }
+  .pf-nav-del { opacity: 0; flex: none; display: inline-flex; align-items: center; padding: 3px; border-radius: 6px; color: var(--pf-text-3); transition: opacity .12s, color .12s, background .12s; }
+  .pf-nav-item:hover .pf-nav-del { opacity: 1; }
+  .pf-nav-del:hover { color: var(--pf-danger); background: var(--pf-danger-bg); }
+  .pf-nav-del svg { width: 13px; height: 13px; }
+  .pf-nav-group { color: var(--pf-text-3); }
+  [data-theme="finance"] .pf-nav-group { color: #7E93AB; }
+  .pf-shell-footer { border-top: 1px solid var(--pf-border); }
+
+  /* ---------- 壳：按钮 ---------- */
+  .pf-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px;
+    border-radius: var(--pf-btn-radius); font-size: 13px; font-weight: 600;
+    border: 1px solid var(--pf-border-strong); background: var(--pf-bg-surface); color: var(--pf-text-2);
+    cursor: pointer; transition: all .15s; white-space: nowrap; line-height: 1;
+  }
+  .pf-btn:hover { border-color: var(--pf-text-3); color: var(--pf-text-1); background: var(--pf-bg-hover); }
+  .pf-btn svg { width: 14px; height: 14px; }
+  .pf-btn.primary { background: var(--pf-primary); border-color: var(--pf-primary); color: var(--pf-primary-contrast);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--pf-primary) 28%, transparent); }
+  .pf-btn.primary:hover { background: var(--pf-primary-hover); border-color: var(--pf-primary-hover); color: var(--pf-primary-contrast); }
+  [data-theme="consumer"] .pf-btn.primary { background: linear-gradient(135deg,#FF8A5C,#FF5E7A); border: none; box-shadow: 0 6px 16px rgba(255,94,122,.32); }
+  [data-theme="consumer"] .pf-btn.primary:hover { background: linear-gradient(135deg,#FF7D4D,#FF4D6D); }
+  .pf-btn.annot { border-color: color-mix(in srgb, var(--pf-annot) 45%, transparent); color: var(--pf-annot); background: var(--pf-bg-surface); }
+  .pf-btn.annot:hover { background: rgba(249,115,22,.08); border-color: var(--pf-annot); color: var(--pf-annot-strong); }
+  .pf-btn.annot.on { background: var(--pf-annot); border-color: var(--pf-annot); color: #fff; }
+  [data-theme="finance"] .pf-btn { height: 30px; font-weight: 500; }
+
+  /* ---------- 双态：演示态（默认，像真实产品）/ 评审态（显工具） ---------- */
+  .pf-shell-sidebar .pf-review-only { display: none; }
+  body.pf-review-mode .pf-shell-sidebar .pf-review-only { display: block; }
+  .pf-shell-topbar .pf-review-tools { display: none; }
+  body.pf-review-mode .pf-shell-topbar .pf-review-tools { display: flex; align-items: center; gap: 8px; }
+  .pf-review-fab {
+    position: fixed; right: 20px; bottom: 20px; z-index: 80;
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 42px; padding: 0 18px; border-radius: 99px;
+    background: var(--pf-grad-brand); color: #fff;
+    font-size: 13.5px; font-weight: 600; border: none; cursor: pointer;
+    box-shadow: 0 10px 28px -6px color-mix(in srgb, var(--pf-primary) 65%, transparent);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .pf-review-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -6px color-mix(in srgb, var(--pf-primary) 75%, transparent); }
+  .pf-review-fab svg { width: 17px; height: 17px; }
+  body.pf-review-mode .pf-review-fab {
+    background: var(--pf-bg-surface); color: var(--pf-text-2);
+    border: 1px solid var(--pf-border-strong); box-shadow: var(--pf-shadow-md);
+  }
+  body.pf-review-mode .pf-review-fab:hover { color: var(--pf-text-1); }
+  /* 打开抽屉/弹窗时藏起浮动评审按钮，避免遮挡操作 */
+  body:has(.pf-drawer-mask:not(.hidden)) .pf-review-fab,
+  body:has(.pf-modal-mask:not(.hidden)) .pf-review-fab { display: none; }
+  /* 角标挂在 body 上层级（9997）高于抽屉（61），打开抽屉/弹窗时一并藏掉，避免 ✔/! 浮在面板上 */
+  body:has(.pf-drawer-mask:not(.hidden)) .pf-ann-badge,
+  body:has(.pf-modal-mask:not(.hidden)) .pf-ann-badge { display: none; }
+
+  /* ---------- 沉浸态：门户/官网/营销/登录页全屏，隐藏壳侧栏与顶栏（官网是官网） ---------- */
+  .pf-immersive .pf-shell-sidebar { display: none; }
+  .pf-immersive .pf-shell-topbar { display: none; }
+  /* 沉浸态进入评审：顶栏变浮动工具条浮在内容上（演示态依然干净） */
+  body.pf-immersive.pf-review-mode .pf-shell-topbar {
+    display: flex; position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    height: 48px; background: var(--pf-topbar-bg); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--pf-border); box-shadow: var(--pf-shadow-sm);
+  }
+  body.pf-immersive.pf-review-mode #pf-page-root { padding-top: 48px; }
+
+  /* ---------- 顶导航布局（spec.layout='topnav'）：隐侧栏，品牌进顶栏，模块横向菜单 + 悬停下拉 ---------- */
+  body.pf-layout-topnav .pf-shell-sidebar { display: none; }
+  #pf-topbrand { display: none; align-items: center; gap: 8px; padding-right: 12px; margin-right: 6px; border-right: 1px solid var(--pf-border); }
+  body.pf-layout-topnav #pf-topbrand { display: inline-flex; }
+  #pf-top-appname { font-size: 13.5px; font-weight: 700; line-height: 1.2; max-width: 200px; color: var(--pf-text-1); }
+  .pf-shell-topnav {
+    display: none; align-items: stretch; height: 44px; flex-shrink: 0;
+    background: var(--pf-sidebar-bg);
+    border-bottom: 1px solid var(--pf-sidebar-border);
+    padding: 0 12px; gap: 2px;
+    transition: background .25s, border-color .25s;
+  }
+  body.pf-layout-topnav #pf-topnav.pf-shell-topnav { display: flex; }
+  body.pf-immersive #pf-topnav { display: none !important; }
+  .pf-tn-group { position: relative; display: flex; }
+  .pf-tn-label, .pf-tn-flat {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0 14px;
+    font-size: 13px; font-weight: 500; color: var(--pf-sidebar-text);
+    cursor: pointer; white-space: nowrap; background: none; border: none; border-bottom: 2px solid transparent;
+    transition: color .15s, background .15s; font-family: inherit;
+  }
+  .pf-tn-label svg, .pf-tn-flat svg { width: 12px; height: 12px; flex: none; opacity: .7; }
+  .pf-tn-group:hover .pf-tn-label, .pf-tn-group.open .pf-tn-label,
+  .pf-tn-flat:hover { color: var(--pf-sidebar-active-text); background: var(--pf-bg-hover); }
+  [data-theme="finance"] .pf-tn-group:hover .pf-tn-label, [data-theme="finance"] .pf-tn-group.open .pf-tn-label { background: rgba(255,255,255,.07); }
+  .pf-tn-group.active .pf-tn-label, .pf-tn-flat.active {
+    color: var(--pf-sidebar-active-text); font-weight: 600;
+    border-bottom-color: var(--pf-sidebar-active-text);
+  }
+  /* 下拉用 fixed 浮层：菜单栏不能 overflow（会裁掉下挂菜单），坐标由 JS 按按钮位置算 */
+  .pf-tn-menu {
+    display: none; position: fixed; z-index: 60;
+    min-width: 190px; padding: 6px;
+    background: var(--pf-bg-surface); border: 1px solid var(--pf-border);
+    border-radius: var(--pf-r-md); box-shadow: var(--pf-shadow-md);
+  }
+  .pf-tn-menu.show { display: block; }
+  .pf-tn-item {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border-radius: var(--pf-r-sm); font-size: 13px; color: var(--pf-text-2);
+    cursor: pointer; white-space: nowrap;
+  }
+  .pf-tn-item:hover { background: var(--pf-bg-hover); color: var(--pf-text-1); }
+  .pf-tn-item.active { color: var(--pf-primary-text, var(--pf-text-1)); font-weight: 600; background: var(--pf-primary-bg); }
+  .pf-tn-item.pending { color: var(--pf-text-3); }
+  .pf-tn-item .pf-nav-del { opacity: 0; }
+  .pf-tn-item:hover .pf-nav-del { opacity: 1; }
+  .pf-tn-dot { flex: none; }
+
+  /* 页内顶部导航（沉浸页自带；logo 左 / 链接中 / CTA 右，横排） */
+  .pf-navbar {
+    display: flex; align-items: center; gap: 28px;
+    padding: 16px 40px; width: 100%;
+  }
+  .pf-navbar .pf-navbar-brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 800; color: var(--pf-text-1); cursor: pointer; letter-spacing: -.01em; }
+  .pf-navbar .pf-navbar-brand .pf-brand-mark { width: 34px; height: 34px; border-radius: 10px; }
+  .pf-navbar .pf-navbar-links { display: flex; align-items: center; gap: 26px; margin-left: 12px; }
+  .pf-navbar .pf-navbar-link { font-size: 14px; font-weight: 500; color: var(--pf-text-2); cursor: pointer; background: none; border: none; padding: 0; font-family: inherit; transition: color .15s; }
+  .pf-navbar .pf-navbar-link:hover, .pf-navbar .pf-navbar-link.active { color: var(--pf-primary); }
+  .pf-navbar .pf-navbar-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: 0 0 auto; white-space: nowrap; }
+  .pf-navbar .pf-navbar-actions * { white-space: nowrap; }
+  /* 沉浸页 navbar 放在深色 hero 之上时可加 .on-hero：文字反白 */
+  .pf-navbar.on-hero .pf-navbar-brand { color: #fff; }
+  .pf-navbar.on-hero .pf-navbar-link { color: rgba(255,255,255,.82); }
+  .pf-navbar.on-hero .pf-navbar-link:hover, .pf-navbar.on-hero .pf-navbar-link.active { color: #fff; }
+  /* 深色实心顶栏：还原「藏青底白字横导航」类原站（外部页重建用）。颜色走 token，各主题可调 */
+  .pf-navbar.dark-solid { background: var(--pf-nav-solid-bg, #10233f); color: #fff; gap: 28px; box-shadow: var(--pf-shadow-sm); }
+  .pf-navbar.dark-solid .pf-navbar-brand { color: #fff; }
+  .pf-navbar.dark-solid .pf-navbar-link { color: rgba(255,255,255,.72); }
+  .pf-navbar.dark-solid .pf-navbar-link:hover { color: #fff; }
+  .pf-navbar.dark-solid .pf-navbar-link.active { color: #fff; font-weight: 700; position: relative; }
+  .pf-navbar.dark-solid .pf-navbar-link.active::after { content:''; position:absolute; left:0; right:0; bottom:-18px; height:2px; background:var(--pf-primary); border-radius:2px; }
+  .pf-navbar.dark-solid .pf-navbar-actions .pf-user-chip { color:#fff; background:rgba(255,255,255,.1); }
+  [data-theme="finance"] { --pf-nav-solid-bg: #10233f; }
+  [data-theme="dark"] { --pf-nav-solid-bg: #0c1422; }
+  [data-theme="saas"] { --pf-nav-solid-bg: #1d2b57; }
+  [data-theme="consumer"] { --pf-nav-solid-bg: #2a2350; }
+
+  /* ---------- 壳：抽屉/弹层 token 化 ---------- */
+  .pf-drawer { background: var(--pf-bg-surface); border-left: 1px solid var(--pf-border); }
+  .pf-drawer .pf-drawer-head { border-bottom: 1px solid var(--pf-border); color: var(--pf-text-1); }
+  .pf-drawer .pf-drawer-sub { color: var(--pf-text-3); }
+  .pf-drawer label { color: var(--pf-text-2); }
+  .pf-img-drop { border: 1px dashed var(--pf-border-strong); border-radius: 10px; padding: 10px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .pf-img-drop:hover, .pf-img-drop.dragover { border-color: var(--pf-primary); background: var(--pf-primary-soft); }
+  .pf-img-hint { font-size: 12px; color: var(--pf-text-3); text-align: center; padding: 12px 4px; }
+  .pf-img-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .pf-img-thumbs:empty { display: none; }
+  .pf-img-thumb { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--pf-border); }
+  .pf-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pf-img-thumb .pf-img-x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 18px; text-align: center; padding: 0; }
+  .pf-img-thumb .pf-img-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--pf-bg-surface); font-size: 11px; color: var(--pf-text-3); }
+  .pf-input { background: var(--pf-bg-surface); border: 1px solid var(--pf-border-strong); color: var(--pf-text-1); border-radius: var(--pf-btn-radius); }
+  .pf-input:focus { outline: none; border-color: var(--pf-primary); box-shadow: 0 0 0 3px var(--pf-primary-soft); }
+  .pf-drawer-mask { background: rgba(15,18,32,.4); backdrop-filter: blur(2px); }
+  #pf-page-error { background: var(--pf-danger-bg); border: 1px solid color-mix(in srgb, var(--pf-danger) 30%, transparent); color: var(--pf-danger-text); }
+  #pf-state { background: var(--pf-bg-app); }
+  #pf-state h3 { color: var(--pf-text-1); }
+  #pf-state p { color: var(--pf-text-3); }
+  #pf-page-loading { background: color-mix(in srgb, var(--pf-bg-surface) 82%, transparent); color: var(--pf-text-3); }
+
+  /* ============================================================
+     业务组件库（AI 生成页面强制使用；颜色全部走 token，随主题换肤）
+     ============================================================ */
+  .pf-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .pf-page-header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: var(--pf-text-1); }
+  .pf-page-header p { font-size: 12.5px; color: var(--pf-text-3); line-height: 1.6; }
+  .pf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pf-density-gap); }
+  .pf-card { background: var(--pf-bg-surface); border: 1px solid var(--pf-border); border-radius: var(--pf-r-lg); box-shadow: var(--pf-shadow-xs); }
+  .pf-stat { padding: 16px 18px; }
+  .pf-stat .pf-stat-label { font-size: 12px; color: var(--pf-text-3); display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+  .pf-stat .pf-stat-label svg { width: 14px; height: 14px; }
+  .pf-stat .pf-stat-value { font-size: 26px; font-weight: 750; letter-spacing: -.02em; color: var(--pf-text-1); white-space: nowrap; }
+  .pf-stat .pf-stat-value .unit { font-size: 13px; font-weight: 500; color: var(--pf-text-3); margin-left: 3px; }
+  .pf-stat .pf-stat-trend { font-size: 11.5px; margin-top: 6px; color: var(--pf-text-3); }
+  .pf-stat .pf-stat-trend .up { color: var(--pf-success-text); font-weight: 600; }
+  .pf-stat .pf-stat-trend .down { color: var(--pf-danger-text); font-weight: 600; }
+  [data-theme="finance"] .pf-stat .pf-stat-value { font-size: 22px; font-weight: 700; }
+  .pf-filter-bar { padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pf-table-wrap { overflow: hidden; }
+  .pf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .pf-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--pf-text-3); padding: 11px 16px; border-bottom: 1px solid var(--pf-border); background: var(--pf-bg-subtle); white-space: nowrap; }
+  .pf-table td { padding: 13px 16px; border-bottom: 1px solid var(--pf-border); color: var(--pf-text-2); }
+  .pf-table tr:last-child td { border-bottom: none; }
+  .pf-table tbody tr { transition: background .12s; }
+  .pf-table tbody tr:hover { background: var(--pf-bg-hover); }
+  .pf-table .pf-ent { display: flex; align-items: center; gap: 10px; }
+  .pf-table .pf-ent .pf-av { width: 30px; height: 30px; border-radius: var(--pf-r-sm); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .pf-table .pf-ent .pf-name { color: var(--pf-text-1); font-weight: 600; }
+  .pf-table .pf-ent .pf-sub { font-size: 11.5px; color: var(--pf-text-3); margin-top: 1px; }
+  .pf-table .pf-money { font-weight: 650; color: var(--pf-text-1); text-align: right; }
+  [data-theme="finance"] .pf-table th { padding: 8px 14px; }
+  [data-theme="finance"] .pf-table td { padding: 9px 14px; }
+  .pf-tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .pf-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .pf-tag.success { background: var(--pf-success-bg); color: var(--pf-success-text); }
+  .pf-tag.warning { background: var(--pf-warning-bg); color: var(--pf-warning-text); }
+  .pf-tag.danger { background: var(--pf-danger-bg); color: var(--pf-danger-text); }
+  .pf-tag.info { background: var(--pf-info-bg); color: var(--pf-info-text); }
+  [data-theme="finance"] .pf-tag { border-radius: 4px; font-weight: 500; }
+  [data-theme="finance"] .pf-tag::before { display: none; }
+  .pf-link { color: var(--pf-primary); font-size: 12.5px; cursor: pointer; font-weight: 600; background: none; border: none; padding: 0; }
+  [data-theme="dark"] .pf-link { color: var(--pf-primary); }
+  .pf-link:hover { text-decoration: underline; }
+  .pf-link.danger { color: var(--pf-danger-text); }
+  .pf-actions-cell { display: flex; gap: 14px; }
+  .pf-pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; font-size: 12px; color: var(--pf-text-3); }
+  .pf-page-no { min-width: 28px; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pf-border); border-radius: var(--pf-r-sm); background: var(--pf-bg-surface); color: var(--pf-text-2); font-size: 12px; cursor: pointer; }
+  .pf-page-no.active { background: var(--pf-primary); border-color: var(--pf-primary); color: var(--pf-primary-contrast); font-weight: 600; }
+  .pf-modal-mask { position: fixed; inset: 0; background: rgba(15,18,32,.45); z-index: 70; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+  .pf-modal { background: var(--pf-bg-surface); border-radius: var(--pf-r-lg); box-shadow: var(--pf-shadow-md); border: 1px solid var(--pf-border); width: 480px; max-width: 92vw; max-height: 86vh; overflow: auto; }
+  .pf-modal-head { padding: 16px 20px; border-bottom: 1px solid var(--pf-border); font-weight: 700; color: var(--pf-text-1); display: flex; justify-content: space-between; align-items: center; }
+  .pf-modal-body { padding: 20px; }
+  .pf-modal-foot { padding: 14px 20px; border-top: 1px solid var(--pf-border); display: flex; justify-content: flex-end; gap: 10px; }
+  .pf-pr-pages { font-size: 13px; color: var(--pf-text-1); margin-bottom: 12px; }
+  .pf-pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow: auto; }
+  .pf-pr-list li { border: 1px solid var(--pf-border); border-left: 3px solid var(--pf-success); border-radius: 8px; padding: 9px 12px; background: var(--pf-bg-subtle); }
+  .pf-pr-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+  .pf-pr-page { font-size: 12px; font-weight: 700; color: var(--pf-primary); }
+  .pf-pr-target { font-size: 11px; background: var(--pf-bg-hover); color: var(--pf-text-2); border-radius: 5px; padding: 1px 7px; }
+  .pf-pr-needreq { font-style: normal; font-size: 11px; font-weight: 700; background: var(--pf-warning-bg); color: var(--pf-warning-text); border-radius: 5px; padding: 1px 7px; }
+  .pf-pr-content { font-size: 12.5px; line-height: 1.6; color: var(--pf-text-1); }
+  .pf-pr-tip { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--pf-border); font-size: 12px; line-height: 1.6; color: var(--pf-text-3); }
+  .pf-field { margin-bottom: 14px; }
+  .pf-field label { display: block; font-size: 12.5px; color: var(--pf-text-2); margin-bottom: 6px; font-weight: 600; }
+  .pf-field label .req { color: var(--pf-danger-text); margin-left: 2px; }
+  .pf-field input, .pf-field select, .pf-field textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--pf-border-strong); border-radius: var(--pf-btn-radius); background: var(--pf-bg-surface); color: var(--pf-text-1); font-size: 13px; outline: none; font-family: inherit; }
+  .pf-field input:focus, .pf-field select:focus, .pf-field textarea:focus { border-color: var(--pf-primary); box-shadow: 0 0 0 3px var(--pf-primary-soft); }
+  .pf-md { color: var(--pf-text-2); }
+  .pf-md h1, .pf-md h2, .pf-md h3 { color: var(--pf-text-1); }
+  .pf-md th { background: var(--pf-bg-subtle) !important; border-color: var(--pf-border) !important; color: var(--pf-text-2); }
+  .pf-md td { border-color: var(--pf-border) !important; color: var(--pf-text-2); }
+  .pf-md code { background: var(--pf-bg-hover); color: var(--pf-text-1); }
+  .pf-md pre { background: var(--pf-bg-subtle); border: 1px solid var(--pf-border); }
+  .pf-toast { background: var(--pf-text-1); }
+
+  /* 标注意见卡片 */
+  .pf-annot-card { border: 1px solid var(--pf-border); border-radius: var(--pf-r-md); padding: 12px; background: var(--pf-bg-subtle); }
+  .pf-annot-card.is-open { border-color: color-mix(in srgb, var(--pf-annot) 35%, var(--pf-border)); background: color-mix(in srgb, var(--pf-annot) 5%, var(--pf-bg-surface)); }
+  .pf-annot-meta { font-size: 12px; color: var(--pf-text-3); margin-bottom: 4px; }
+  .pf-annot-needs { color: var(--pf-warning-text); }
+  .pf-annot-content { font-size: 13px; color: var(--pf-text-1); line-height: 1.6; }
+  .pf-annot-time { font-size: 11px; color: var(--pf-text-3); margin-top: 4px; }
+  .pf-btn-danger-ghost:hover { color: var(--pf-danger-text); border-color: color-mix(in srgb, var(--pf-danger) 40%, var(--pf-border-strong)); }
+  .pf-drawer-close { background: none; border: none; font-size: 22px; line-height: 1; color: var(--pf-text-3); cursor: pointer; padding: 0 4px; }
+  .pf-drawer-close:hover { color: var(--pf-text-1); }
+  .pf-req-index-btn { display: block; width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--pf-r-sm); font-size: 12px; background: none; border: none; color: var(--pf-text-2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pf-req-index-btn:hover { background: var(--pf-bg-hover); }
+  .pf-req-index-btn.active { background: var(--pf-primary-soft); color: var(--pf-primary); font-weight: 600; }
+  #pf-state-icon { width: 64px; height: 64px; border-radius: 18px; background: var(--pf-primary-soft); display: flex; align-items: center; justify-content: center; }
+  #pf-state-icon svg { width: 32px; height: 32px; stroke: var(--pf-primary); }
+  #pf-state-icon.danger { background: var(--pf-danger-bg); }
+  #pf-state-icon.danger svg { stroke: var(--pf-danger-text); }
+
+  /* ============================================================
+     高表现力积木（门户/营销/大屏用；颜色全走 token，随主题换肤）
+     ============================================================ */
+  /* Hero 品牌头图：门户/首页/营销页首屏主视觉 */
+  .pf-hero {
+    position: relative; overflow: hidden;
+    background: var(--pf-grad-hero); color: var(--pf-hero-text);
+    border-radius: var(--pf-r-lg); padding: 44px 40px;
+    box-shadow: 0 16px 40px -16px color-mix(in srgb, var(--pf-primary) 55%, transparent);
+  }
+  .pf-hero::after {
+    content: ''; position: absolute; inset: 0;
+    background: var(--pf-grad-hero-2); pointer-events: none;
+  }
+  .pf-hero > * { position: relative; z-index: 1; }
+  .pf-hero .pf-hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    padding: 5px 12px; border-radius: 99px;
+    background: rgba(255,255,255,.16); color: #fff;
+    backdrop-filter: blur(4px); margin-bottom: 16px;
+  }
+  .pf-hero h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; color: #fff; margin: 0 0 12px; }
+  .pf-hero .pf-hero-sub { font-size: 15px; line-height: 1.7; color: var(--pf-hero-sub); max-width: 620px; margin: 0 0 24px; }
+  .pf-hero .pf-hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 22px; }
+  .pf-hero .pf-btn.primary { background: #fff; color: var(--pf-hero-cta-text); border-color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+  .pf-hero .pf-btn.primary:hover { background: rgba(255,255,255,.92); color: var(--pf-hero-cta-text); }
+  .pf-hero .pf-btn.ghost { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.35); color: #fff; backdrop-filter: blur(4px); }
+  .pf-hero .pf-btn.ghost:hover { background: rgba(255,255,255,.22); color: #fff; }
+  /* hero 里的搜索条 */
+  .pf-hero-search { display: flex; gap: 10px; background: #fff; border-radius: var(--pf-btn-radius); padding: 6px; max-width: 560px; box-shadow: 0 10px 30px rgba(0,0,0,.18); margin-top: 4px; }
+  .pf-hero-search + .pf-hero-actions, .pf-hero-actions + .pf-hero-search { margin-top: 22px; }
+  .pf-hero-search input { flex: 1; border: none; outline: none; padding: 0 14px; font-size: 14px; background: transparent; color: var(--pf-hero-cta-ink); height: 40px; }
+  .pf-hero-search input::placeholder { color: #9AA0B0; }
+  .pf-hero-search .pf-btn.primary { box-shadow: none; background: transparent; border-color: transparent; color: var(--pf-hero-cta-text); }
+  .pf-hero-search .pf-btn.primary:hover { background: rgba(0,0,0,.05); }
+
+  /* 特性卡网格：门户能力/卖点展示 */
+  .pf-feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--pf-density-gap); }
+  .pf-feature {
+    background: var(--pf-bg-surface); border: 1px solid var(--pf-border);
+    border-radius: var(--pf-r-lg); padding: 22px;
+    transition: transform .18s, box-shadow .18s, border-color .18s;
+  }
+  .pf-feature:hover { transform: translateY(-3px); box-shadow: var(--pf-shadow-md); border-color: color-mix(in srgb, var(--pf-primary) 30%, var(--pf-border)); }
+  .pf-feature .pf-feature-icon {
+    width: 42px; height: 42px; border-radius: 11px; margin-bottom: 14px;
+    background: var(--pf-grad-brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--pf-primary) 60%, transparent);
+  }
+  .pf-feature .pf-feature-icon svg { width: 21px; height: 21px; }
+  .pf-feature h3 { font-size: 15px; font-weight: 700; color: var(--pf-text-1); margin: 0 0 7px; }
+  .pf-feature p { font-size: 12.5px; line-height: 1.65; color: var(--pf-text-3); margin: 0; }
+
+  /* 区块标题（ eyebrow 小标 + 大标题 + 副标题） */
+  .pf-section-head { margin-bottom: 18px; }
+  .pf-section-head .pf-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--pf-primary); margin-bottom: 6px; }
+  .pf-section-head h2 { font-size: 20px; font-weight: 750; letter-spacing: -.01em; color: var(--pf-text-1); margin: 0 0 6px; }
+  .pf-section-head p { font-size: 13px; color: var(--pf-text-3); margin: 0; line-height: 1.6; }
+
+  /* 氛围横幅（公告/引导条） */
+  .pf-banner {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--pf-grad-soft); border: 1px solid color-mix(in srgb, var(--pf-primary) 18%, var(--pf-border));
+    border-radius: var(--pf-r-lg); padding: 14px 18px;
+  }
+  .pf-banner .pf-banner-icon { width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0; background: var(--pf-primary-soft); color: var(--pf-primary); display: flex; align-items: center; justify-content: center; }
+  .pf-banner .pf-banner-icon svg { width: 18px; height: 18px; }
+  .pf-banner .pf-banner-text { flex: 1; font-size: 13px; color: var(--pf-text-2); line-height: 1.5; }
+  .pf-banner .pf-banner-text strong { color: var(--pf-text-1); }
+  /* 深色科技风：横幅 = 彩色半透明品牌渐变（青→蓝→琉 60% 透明，透出底色）+ 玻璃棱边 */
+  [data-theme="dark"] .pf-banner {
+    background: linear-gradient(135deg,
+      rgba(14,165,233,.6) 0%,
+      rgba(59,130,246,.6) 50%,
+      rgba(99,102,241,.6) 100%);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,.22);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28),
+                0 16px 40px -18px color-mix(in srgb, var(--pf-primary) 70%, transparent);
+  }
+  [data-theme="dark"] .pf-banner .pf-banner-icon {
+    background: rgba(255,255,255,.18); color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.3);
+  }
+  [data-theme="dark"] .pf-banner .pf-banner-text { color: rgba(255,255,255,.88); }
+  [data-theme="dark"] .pf-banner .pf-banner-text strong { color: #fff; }
+  [data-theme="dark"] .pf-banner .pf-btn {
+    background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.35); color: #fff;
+  }
+  [data-theme="dark"] .pf-banner .pf-btn:hover { background: rgba(255,255,255,.26); }
+
+  /* 大数字（数据大屏/指标带） */
+  .pf-metric-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--pf-density-gap); }
+  .pf-metric { text-align: center; padding: 20px 16px; }
+  .pf-metric .pf-metric-value { font-size: 30px; font-weight: 800; letter-spacing: -.02em; color: var(--pf-primary); font-variant-numeric: tabular-nums; line-height: 1; }
+  .pf-metric .pf-metric-value .unit { font-size: 14px; font-weight: 600; color: var(--pf-text-3); margin-left: 2px; }
+  .pf-metric .pf-metric-label { font-size: 12px; color: var(--pf-text-3); margin-top: 8px; }
+
+  /* 渐变图标底（列表/卡片里的小图标） */
+  .pf-icon-tile { width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--pf-primary-soft); color: var(--pf-primary); }
+  .pf-icon-tile svg { width: 19px; height: 19px; }
+  /* 深色科技风：图标块统一渐变发光（与 hero/banner/feature 语言一致），平底淡青在深底显廉价 */
+  [data-theme="dark"] .pf-icon-tile { background: var(--pf-grad-brand); color: #fff; box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--pf-primary) .6, transparent); }
+  /* 深色科技风：卡片悬停带主题色辉光描边 + 上浮，避免深底盒子发死 */
+  [data-theme="dark"] .pf-card { transition: transform .18s, box-shadow .18s, border-color .18s; }
+  [data-theme="dark"] .pf-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--pf-primary) 34%, var(--pf-border)); box-shadow: 0 14px 34px -14px color-mix(in srgb, var(--pf-primary) 45%, transparent); }
+</style>
+</head>
+<body>
+<div class="flex h-full">
+  <!-- 侧边导航 -->
+  <aside class="pf-shell-sidebar w-60 flex-shrink-0 flex flex-col">
+    <div class="pf-shell-brand px-4 py-3.5 flex items-center gap-2.5">
+      <span class="pf-brand-mark"><svg viewBox="0 0 24.6 24" fill="none">
+        <ellipse cx="6.6" cy="19.7" rx="5.6" ry="1.65" fill="#fff" fill-opacity=".92"/>
+        <path d="M11.2 19.6c-.5-3.6 1.6-6.6 4.9-6.6 2.9 0 5 2.4 5 5.8 0 .5-.4.9-.9.9z" fill="#fff"/>
+        <path d="M14.9 9.6c.15-1.4 2.2-1.5 2.5-.15l.05.55c1.5.35 2.65 1.7 2.65 3.3 0 1.95-1.7 3.5-3.9 3.5-2.15 0-3.85-1.55-3.85-3.5 0-1.55 1.05-2.9 2.55-3.4z" fill="#fff"/>
+        <circle cx="15.5" cy="7.9" r="1.35" fill="#fff"/>
+        <circle cx="17.1" cy="11.6" r=".95" fill="#5B54E8"/>
+        <ellipse cx="19.9" cy="12.7" rx=".95" ry=".72" fill="#5B54E8"/>
+        <rect x="18.9" y="13.7" width="4.3" height="1.15" rx=".57" fill="#5B54E8"/>
+        <path d="M21.6 13.75c.25-1.45 1.35-2.5 2.75-2.7-.15 1.5-1.2 2.6-2.75 2.7z" fill="#fff"/>
+      </svg></span>
+      <div class="min-w-0">
+        <div id="pf-appname" class="font-bold text-[14px] leading-snug truncate">原型</div>
+        <div class="pf-shell-sub pf-review-only text-[10.5px] mt-0.5">ProtoForge 可点击原型</div>
+      </div>
+    </div>
+    <nav id="pf-nav" class="flex-1 overflow-y-auto py-2 text-[13px]"></nav>
+    <div id="pf-side-footer" class="pf-shell-footer pf-review-only p-3 space-y-2"></div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="flex-1 flex flex-col min-w-0">
+    <header class="pf-shell-topbar h-[52px] flex items-center justify-between px-[18px] flex-shrink-0">
+      <div class="flex items-center gap-3 min-w-0">
+        <!-- 顶导航布局下品牌移到顶栏（侧栏隐藏） -->
+        <span id="pf-topbrand" class="flex-shrink-0">
+          <span class="pf-brand-mark"><svg viewBox="0 0 24.6 24" fill="none">
+            <ellipse cx="6.6" cy="19.7" rx="5.6" ry="1.65" fill="#fff" fill-opacity=".92"/>
+            <path d="M11.2 19.6c-.5-3.6 1.6-6.6 4.9-6.6 2.9 0 5 2.4 5 5.8 0 .5-.4.9-.9.9z" fill="#fff"/>
+            <path d="M14.9 9.6c.15-1.4 2.2-1.5 2.5-.15l.05.55c1.5.35 2.65 1.7 2.65 3.3 0 1.95-1.7 3.5-3.9 3.5-2.15 0-3.85-1.55-3.85-3.5 0-1.55 1.05-2.9 2.55-3.4z" fill="#fff"/>
+            <circle cx="15.5" cy="7.9" r="1.35" fill="#fff"/>
+            <circle cx="17.1" cy="11.6" r=".95" fill="#5B54E8"/>
+            <ellipse cx="19.9" cy="12.7" rx=".95" ry=".72" fill="#5B54E8"/>
+            <rect x="18.9" y="13.7" width="4.3" height="1.15" rx=".57" fill="#5B54E8"/>
+            <path d="M21.6 13.75c.25-1.45 1.35-2.5 2.75-2.7-.15 1.5-1.2 2.6-2.75 2.7z" fill="#fff"/>
+          </svg></span>
+          <span id="pf-top-appname" class="truncate">原型</span>
+        </span>
+        <span id="pf-page-title" class="font-semibold text-[15px]"></span>
+        <span id="pf-gen-tip" class="hidden text-[12px] items-center gap-1" style="color:var(--pf-primary)">
+          <svg class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          页面生成中…
+        </span>
+      </div>
+      <div class="pf-review-tools flex items-center gap-2">
+        <button id="pf-btn-req" class="pf-btn" style="height:30px;padding:0 12px;font-size:12.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          需求说明</button>
+        <button id="pf-btn-export" class="hidden pf-btn" style="height:30px;padding:0 12px;font-size:12.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+          导出 HTML</button>
+        <button id="pf-btn-annot-list" class="pf-btn annot" style="height:30px;padding:0 12px;font-size:12.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          评审意见 <span id="pf-annot-list-count"></span></button>
+        <button id="pf-btn-del-page" class="pf-btn pf-btn-danger-ghost hidden" style="height:30px;padding:0 12px;font-size:12.5px" title="删除这个采集页">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          删除此页</button>
+        <button id="pf-btn-page-annot" class="pf-btn annot hidden" style="height:30px;padding:0 12px;font-size:12.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          对整页提意见</button>
+        <button id="pf-btn-annot" class="pf-btn annot" style="height:30px;padding:0 12px;font-size:12.5px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 8.4-9.2 9.2-5-5L14 6.8l7.2 1.6z"/><path d="m7 14-4 4"/></svg>
+          <span class="pf-annot-label">标注模式</span></button>
+      </div>
+    </header>
+    <!-- 顶导航布局的横向模块菜单（sidebar 布局下隐藏；沉浸页隐藏） -->
+    <nav id="pf-topnav" class="pf-shell-topnav"></nav>
+    <div class="flex-1 overflow-y-auto min-h-0 relative">
+      <div id="pf-page-error" class="hidden m-4 p-3 rounded-lg border text-[13px]"></div>
+      <div id="pf-state" class="absolute inset-0 hidden flex-col items-center justify-center text-center px-8 z-20">
+        <div id="pf-state-icon" class="mb-3"></div>
+        <h3 id="pf-state-title" class="font-semibold text-base mb-1"></h3>
+        <p id="pf-state-desc" class="text-[13px] leading-relaxed max-w-md"></p>
+      </div>
+      <div id="pf-page-root"></div>
+      <div id="pf-page-loading" class="hidden absolute inset-0 flex items-center justify-center text-sm z-10">
+        <svg class="animate-spin w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        页面生成中…
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 标注意见弹框 -->
+<div id="pf-draft-mask" class="pf-drawer-mask hidden">
+  <div class="pf-drawer" style="width:400px">
+    <div class="pf-drawer-head px-5 py-4 flex items-center justify-between">
+      <div>
+        <div class="font-semibold text-[14px]">贴一条评审意见</div>
+        <div id="pf-draft-target" class="pf-drawer-sub text-[12px] mt-1"></div>
+      </div>
+      <button id="pf-draft-x" class="pf-drawer-close">×</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-5 space-y-4">
+      <div>
+        <label class="text-[13px] block mb-1">你的称呼（可选）</label>
+        <input id="pf-draft-author" class="pf-input w-full h-9 px-3 text-[13px]" placeholder="如：王总" />
+      </div>
+      <div>
+        <label class="text-[13px] block mb-1">意见内容</label>
+        <textarea id="pf-draft-content" rows="4" class="pf-input w-full px-3 py-2 text-[13px]" style="height:auto" placeholder="一句话说明要怎么改；贴图时说明图的用途（照这样改/这里有问题/参考这种感觉）"></textarea>
+      </div>
+      <div>
+        <label class="text-[13px] block mb-1">附图（可选，可多张）</label>
+        <div id="pf-draft-drop" class="pf-img-drop">
+          <input id="pf-draft-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none" />
+          <div id="pf-draft-imgs" class="pf-img-thumbs hidden"></div>
+          <div id="pf-draft-imghint" class="pf-img-hint">点击选图 · 拖拽到此处 · 或直接 Ctrl/⌘+V 粘贴截图</div>
+        </div>
+      </div>
+    </div>
+    <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--pf-border)">
+      <button id="pf-draft-cancel" class="pf-btn" style="height:32px">取消</button>
+      <button id="pf-draft-submit" class="pf-btn annot on" style="height:32px">提交意见</button>
+    </div>
+  </div>
+</div>
+
+<!-- 意见抽屉 -->
+<div id="pf-annot-mask" class="pf-drawer-mask hidden">
+  <div class="pf-drawer">
+    <div class="pf-drawer-head px-5 py-4 flex items-center justify-between">
+      <div class="font-semibold text-[14px]">评审意见 <span id="pf-annot-count" class="pf-drawer-sub text-[12px] font-normal"></span></div>
+      <button id="pf-annot-close" class="pf-drawer-close">×</button>
+    </div>
+    <div id="pf-annot-banner" class="hidden px-5 py-3 border-b text-[12px]" style="background:var(--pf-warning-bg);border-color:var(--pf-border);color:var(--pf-warning-text)">
+      <div class="flex items-center justify-between gap-2">
+        <span id="pf-annot-banner-text"></span>
+        <button id="pf-btn-sync-req" class="px-2 h-7 text-[12px] rounded text-white whitespace-nowrap" style="background:var(--pf-warning)">同步到需求文档</button>
+      </div>
+    </div>
+    <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--pf-border)">
+      <button id="pf-btn-apply-all" class="pf-btn primary" style="height:30px;font-size:12.5px">应用全部待处理（<span id="pf-open-count">0</span>）</button>
+      <span class="text-[12px] pf-drawer-sub">AI 只改意见涉及的页面</span>
+    </div>
+    <div id="pf-annot-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+  </div>
+</div>
+
+<!-- 需求说明抽屉 -->
+<div id="pf-req-mask" class="pf-drawer-mask hidden">
+  <div class="pf-drawer">
+    <div class="pf-drawer-head px-5 py-4 flex items-center justify-between">
+      <div class="font-semibold text-[14px]">需求说明</div>
+      <button id="pf-req-close" class="pf-drawer-close">×</button>
+    </div>
+    <div class="flex flex-1 min-h-0">
+      <div id="pf-req-index" class="w-40 flex-shrink-0 border-r overflow-y-auto p-2 space-y-1 text-[13px]" style="border-color:var(--pf-border)"></div>
+      <div id="pf-req-body" class="flex-1 overflow-y-auto p-5"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 删除采集页确认弹窗 -->
+<div id="pf-delpage-mask" class="pf-modal-mask hidden">
+  <div class="pf-modal" style="width:420px">
+    <div class="pf-modal-head">
+      <span>删除采集页</span>
+      <button id="pf-delpage-x" class="pf-drawer-close">×</button>
+    </div>
+    <div class="pf-modal-body">
+      <div class="text-[13px] leading-relaxed" style="color:var(--pf-text-1)">
+        确定删除页面 <strong id="pf-delpage-name"></strong> 吗？
+      </div>
+      <div class="text-[12px] mt-2 leading-relaxed" style="color:var(--pf-text-3)">
+        将同时移除该页采集包；这个页面上贴过的评审意见会保留，之后重新采集仍可使用。
+      </div>
+    </div>
+    <div class="pf-modal-foot">
+      <button id="pf-delpage-cancel" class="pf-btn" style="height:32px">取消</button>
+      <button id="pf-delpage-ok" class="pf-btn pf-btn-danger-ghost" style="height:32px;border-color:var(--pf-danger);color:var(--pf-danger)">删除页面</button>
+    </div>
+  </div>
+</div>
+
+<div id="pf-patchresult-mask" class="pf-modal-mask hidden">
+  <div class="pf-modal" style="width:460px">
+    <div class="pf-modal-head">
+      <span id="pf-patchresult-title">原型已更新</span>
+    </div>
+    <div class="pf-modal-body" id="pf-patchresult-body"></div>
+    <div class="pf-modal-foot">
+      <button id="pf-patchresult-ok" class="pf-btn primary" style="height:32px">好的</button>
+    </div>
+  </div>
+</div>
+
+<div id="pf-toast" class="pf-toast hidden"></div>
+
+<!-- 浮动评审开关：演示态下唯一可见的工具入口 -->
+<button id="pf-review-fab" class="pf-review-fab" title="进入评审 / 返回演示">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 8.4-9.2 9.2-5-5L14 6.8l7.2 1.6z"/><path d="m7 14-4 4"/></svg>
+  <span id="pf-review-fab-label">开始评审</span>
+</button>
+
+<script>
+(function () {
+  'use strict';
+  var OFFLINE = !!window.__PF_OFFLINE__;
+  var PROJECT = window.__PF_PROJECT__ || '';
+  var API = '/api/projects/' + PROJECT;
+
+  var state = {
+    spec: null,
+    status: 'empty',
+    currentPage: '',
+    params: {},
+    datasets: {},        // name -> [records]
+    datasetMeta: {},     // name -> {statusField, statusMap}
+    annotMode: false,
+    annotations: [],
+    draftImages: [],
+    draft: null,
+    pollTimer: null,
+    busy: false,
+    cleanups: [],
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html !== undefined) e.innerHTML = html;
+    return e;
+  }
+  function toast(msg, type, sticky) {
+    var t = $('pf-toast');
+    t.textContent = msg;
+    t.style.background = type === 'error' ? 'var(--pf-danger)' : type === 'info' ? 'var(--pf-text-2)' : 'var(--pf-success)';
+    t.style.color = 'var(--pf-on-accent)';
+    t.classList.remove('hidden');
+    clearTimeout(t._timer);
+    if (!sticky) t._timer = setTimeout(function () { t.classList.add('hidden'); }, type === 'error' ? 8000 : 2800);
+  }
+  function setApplyBusy(on) {
+    var b = $('pf-btn-apply-all');
+    b.disabled = on;
+    b.classList.toggle('opacity-60', on);
+    b.classList.toggle('cursor-wait', on);
+    if (on) b.innerHTML = 'AI 正在修改原型…';
+    else b.innerHTML = '应用全部待处理（<span id="pf-open-count">0</span>）';
+  }
+  function apiGet(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+  function apiPost(url, body) {
+    var hasBody = body !== undefined && body !== null;
+    return fetch(url, { method: 'POST', headers: hasBody ? { 'Content-Type': 'application/json' } : {}, body: hasBody ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); });
+  }
+  function apiDel(url) { return fetch(url, { method: 'DELETE' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+  function apiPatch(url, body) { return fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); }); }
+
+  // ---------- 极简 markdown ----------
+  function mdToHtml(md) {
+    if (!md) return '<p style="color:var(--pf-text-3)">（无内容）</p>';
+    var lines = String(md).replace(/\r/g, '').split('\n');
+    var html = '', inList = null, inCode = false, tableBuf = [];
+    function closeList() { if (inList) { html += '</' + inList + '>'; inList = null; } }
+    function inline(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>');
+    }
+    function flushTable() {
+      if (!tableBuf.length) return;
+      var rows = tableBuf.map(function (l) { return l.replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); }); });
+      if (rows.length >= 2 && /^:?-{2,}:?$/.test(rows[1][0].replace(/\s/g, ''))) {
+        html += '<table><thead><tr>' + rows[0].map(function (c) { return '<th>' + inline(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
+        for (var i = 2; i < rows.length; i++) html += '<tr>' + rows[i].map(function (c) { return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>';
+        html += '</tbody></table>';
+      } else {
+        rows.forEach(function (r) { html += '<p>' + r.map(inline).join(' | ') + '</p>'; });
+      }
+      tableBuf = [];
+    }
+    lines.forEach(function (line) {
+      if (/^```/.test(line)) { inCode = !inCode; if (!inCode) html += '</pre>'; else { closeList(); html += '<pre>'; } return; }
+      if (inCode) { html += inline(line) + '\n'; return; }
+      if (/^\|.*\|$/.test(line.trim())) { closeList(); tableBuf.push(line.trim()); return; }
+      flushTable();
+      var m;
+      if (m = line.match(/^###\s+(.*)/)) { closeList(); html += '<h3>' + inline(m[1]) + '</h3>'; }
+      else if (m = line.match(/^##\s+(.*)/)) { closeList(); html += '<h2>' + inline(m[1]) + '</h2>'; }
+      else if (m = line.match(/^#\s+(.*)/)) { closeList(); html += '<h1>' + inline(m[1]) + '</h1>'; }
+      else if (m = line.match(/^[-*]\s+(.*)/)) { if (inList !== 'ul') { closeList(); html += '<ul>'; inList = 'ul'; } html += '<li>' + inline(m[1]) + '</li>'; }
+      else if (m = line.match(/^\d+\.\s+(.*)/)) { if (inList !== 'ol') { closeList(); html += '<ol>'; inList = 'ol'; } html += '<li>' + inline(m[1]) + '</li>'; }
+      else if (line.trim() === '') { closeList(); }
+      else html += '<p>' + inline(line) + '</p>';
+    });
+    closeList(); flushTable();
+    return html;
+  }
+
+  // ---------- 数据 ----------
+  function applySpec(spec) {
+    state.spec = spec;
+    // 主题：spec.theme（saas|dark|finance|consumer），默认 saas
+    document.documentElement.dataset.theme = spec.theme || 'saas';
+    $('pf-btn-export').classList.toggle('hidden', !(spec.pages || []).length || OFFLINE);
+    state.datasets = {};
+    state.datasetMeta = {};
+    (spec.datasets || []).forEach(function (ds) {
+      state.datasets[ds.name] = (ds.records || []).map(function (r) { return Object.assign({}, r); });
+      state.datasetMeta[ds.name] = { statusField: ds.statusField || 'status', statusMap: ds.statusMap || {} };
+    });
+    $('pf-appname').textContent = spec.appName || '业务原型';
+    var topApp = $('pf-top-appname'); if (topApp) topApp.textContent = spec.appName || '业务原型';
+    document.title = spec.appName || '业务原型';
+    // 布局：spec.layout（sidebar|topnav），旧数据默认 sidebar
+    document.body.classList.toggle('pf-layout-topnav', spec.layout === 'topnav');
+    renderNav();
+  }
+  function pageById(id) { return (state.spec.pages || []).find(function (p) { return p.id === id; }); }
+  function pageStatus(id) { return (state.spec.pageStatus || {})[id] || 'ready'; }
+
+  // ---------- PF：页面代码可用的全局 API ----------
+  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  window.PF = {
+    go: function (pageId, params) { go(pageId, params || {}); },
+    params: function () { return Object.assign({}, state.params); },
+    onLeave: function (fn) { if (typeof fn === 'function') state.cleanups.push(fn); },
+    records: function (ds) { return clone(state.datasets[ds] || []); },
+    findRecord: function (ds, id) {
+      var r = (state.datasets[ds] || []).find(function (x) { return String(x.id) === String(id); });
+      return r ? clone(r) : null;
+    },
+    addRecord: function (ds, obj, status) {
+      if (!state.datasets[ds]) state.datasets[ds] = [];
+      var rec = Object.assign({}, obj);
+      rec.id = 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+      if (status) rec.status = status;
+      if (!rec.createdAt) {
+        var d = new Date(), pad = function (n) { return String(n).padStart(2, '0'); };
+        rec.createdAt = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      }
+      state.datasets[ds].unshift(rec);
+      refreshCharts();
+      return rec.id;
+    },
+    updateRecord: function (ds, id, patch) {
+      var rec = (state.datasets[ds] || []).find(function (x) { return String(x.id) === String(id); });
+      if (rec) { Object.assign(rec, patch); refreshCharts(); }
+    },
+    toast: toast,
+    annotMode: function () { return state.annotMode; },
+    money: function (n) {
+      var num = Number(n);
+      if (isNaN(num)) return String(n);
+      return '¥' + num.toLocaleString('zh-CN');
+    },
+    statusMap: function (ds) { return clone((state.datasetMeta[ds] || {}).statusMap || {}); },
+    statusField: function (ds) { return (state.datasetMeta[ds] || {}).statusField || 'status'; },
+  };
+  // 状态标签 type → 主题组件 class（页面代码可直接用；随主题换肤）
+  window.PF_STATUS_CLASS = {
+    success: 'pf-tag success',
+    warning: 'pf-tag warning',
+    danger: 'pf-tag danger',
+    info: 'pf-tag info',
+  };
+
+  // ---------- 图表（ECharts 按需加载 + 数据集聚合 + 数据自动联动） ----------
+  var chartBindings = [];   // 数据变更后重算/重绘
+  var pageChartInsts = [];  // 当前页图表实例，切页时 dispose
+
+  function cssVar(name) { return (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim(); }
+  function chartPalette() {
+    var arr = [];
+    for (var i = 1; i <= 6; i++) { var v = cssVar('--pf-chart-' + i); if (v) arr.push(v); }
+    return arr.length ? arr : ['#6366F1'];
+  }
+  function chartTheme() {
+    return {
+      text2: cssVar('--pf-text-2') || '#5B6172',
+      text3: cssVar('--pf-text-3') || '#9AA0B0',
+      border: cssVar('--pf-border') || '#E7E8EE',
+      surface: cssVar('--pf-bg-surface') || '#fff',
+      palette: chartPalette()
+    };
+  }
+
+  var echartsPromise = null;
+  function ensureECharts() {
+    if (window.echarts) return Promise.resolve(window.echarts);
+    if (echartsPromise) return echartsPromise;
+    if (OFFLINE) return Promise.reject(new Error('当前离线包未内联图表库'));
+    echartsPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = '/proto/echarts.min.js';
+      s.onload = function () { window.echarts ? resolve(window.echarts) : reject(new Error('图表库加载失败')); };
+      s.onerror = function () { reject(new Error('图表库加载失败（检查网络）')); };
+      document.head.appendChild(s);
+    });
+    return echartsPromise;
+  }
+
+  function num(v) { var n = Number(v); n = isNaN(n) ? 0 : n; return n; }
+  function applyFilters(rows, filters) {
+    if (!filters) return rows;
+    var keys = Object.keys(filters);
+    return rows.filter(function (r) {
+      return keys.every(function (k) {
+        var fv = filters[k];
+        if (fv === null || fv === undefined || fv === '') return true;
+        if (Object.prototype.toString.call(fv) === '[object Array]') {
+          return fv.map(String).indexOf(String(r[k])) >= 0;
+        }
+        return String(r[k]) === String(fv);
+      });
+    });
+  }
+  function periodLabel(key, gran) { return gran === 'year' ? key + ' 年' : key; }
+  function shiftPeriod(key, gran, delta) {
+    var y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7)) || 1;
+    if (gran === 'year') return String(y + delta);
+    var d = new Date(y, m - 1 + delta, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function periodKeyOf(v, gran) {
+    var s = String(v || '').slice(0, 10);
+    return gran === 'year' ? s.slice(0, 4) : s.slice(0, 7);
+  }
+
+  /** 聚合：返回 [{name, value}]，趋势类按时间补空桶 */
+  function aggregate(cfg) {
+    var rows = applyFilters(clone(state.datasets[cfg.dataset] || []), cfg.filters);
+    var catField = cfg.x || cfg.name;
+    var valField = cfg.y || cfg.field;
+    var agg = cfg.agg || (valField ? 'sum' : 'count');
+    var meta = state.datasetMeta[cfg.dataset] || {};
+    var isStatus = catField && catField === (meta.statusField || 'status');
+    var valueOf = function (r) { return agg === 'count' ? 1 : num(r[valField]); };
+    var calc = function (list) {
+      if (agg === 'count') return list.length;
+      var vals = list.map(valueOf);
+      var s = vals.reduce(function (a, b) { return a + b; }, 0);
+      if (agg === 'avg') return list.length ? s / list.length : 0;
+      if (agg === 'max') return list.length ? Math.max.apply(null, vals) : 0;
+      if (agg === 'min') return list.length ? Math.min.apply(null, vals) : 0;
+      return s;
+    };
+    var displayName = function (raw) {
+      if (isStatus && meta.statusMap && meta.statusMap[raw]) return meta.statusMap[raw].text;
+      return raw == null || raw === '' ? '未分类' : String(raw);
+    };
+
+    // 时间趋势：补连续空桶
+    if (cfg.granularity) {
+      var gran = cfg.granularity === 'day' ? 'month' : cfg.granularity; // 日太碎，月起
+      var buckets = {}; var keys = [];
+      rows.forEach(function (r) {
+        var k = periodKeyOf(r[catField], gran);
+        if (!k || k === 'undefined') return;
+        if (!buckets[k]) { buckets[k] = []; keys.push(k); }
+        buckets[k].push(r);
+      });
+      keys.sort();
+      var full = [];
+      if (keys.length) {
+        for (var k = keys[0]; k < keys[keys.length - 1] || k === keys[keys.length - 1]; k = shiftPeriod(k, gran, 1)) {
+          full.push(k);
+          if (k === keys[keys.length - 1]) break;
+        }
+      }
+      return full.map(function (k) { return { name: periodLabel(k, gran), value: calc(buckets[k] || []) }; });
+    }
+
+    // 分类聚合
+    var map = {}, order = [];
+    rows.forEach(function (r) {
+      var raw = r[catField] == null ? '' : r[catField];
+      var key = String(raw);
+      if (!(key in map)) { map[key] = []; order.push(key); }
+      map[key].push(r);
+    });
+    var pairs = order.map(function (key) { return { raw: key, name: displayName(key), value: calc(map[key]) }; });
+    // 顺序：显式 order > 漏斗保序 > 默认按值降序
+    if (Object.prototype.toString.call(cfg.order) === '[object Array]') {
+      var rank = {}; cfg.order.forEach(function (v, i) { rank[String(v)] = i; });
+      pairs.sort(function (a, b) {
+        var ra = rank[a.raw] === undefined ? 999 : rank[a.raw], rb = rank[b.raw] === undefined ? 999 : rank[b.raw];
+        return ra - rb;
+      });
+    } else if (cfg.type !== 'funnel') {
+      pairs.sort(function (a, b) { return b.value - a.value; });
+    }
+    // top N，其余并入「其他」
+    if (cfg.top && cfg.top > 0 && pairs.length > cfg.top) {
+      var head = pairs.slice(0, cfg.top);
+      var restVal = pairs.slice(cfg.top).reduce(function (a, p) { return a + p.value; }, 0);
+      head.push({ raw: '__other__', name: '其他', value: restVal });
+      pairs.length = 0; Array.prototype.push.apply(pairs, head);
+    }
+    return pairs;
+  }
+
+  function metricValue(cfg) {
+    var rows = applyFilters(clone(state.datasets[cfg.dataset] || []), cfg.filters);
+    var agg = cfg.agg || (cfg.field ? 'sum' : 'count');
+    var vals = rows.map(function (r) { return num(r[cfg.field]); });
+    if (agg === 'count') return rows.length;
+    var s = vals.reduce(function (a, b) { return a + b; }, 0);
+    if (agg === 'avg') return rows.length ? s / rows.length : 0;
+    if (agg === 'max') return rows.length ? Math.max.apply(null, vals) : 0;
+    if (agg === 'min') return rows.length ? Math.min.apply(null, vals) : 0;
+    return s;
+  }
+  function fmtCompact(n, digits) {
+    var trimZero = function (s) { return s.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'); };
+    var a = Math.abs(n);
+    if (a >= 1e8) return trimZero((n / 1e8).toFixed(digits == null ? 2 : digits)) + ' 亿';
+    if (a >= 1e4) return trimZero((n / 1e4).toFixed(digits == null ? 1 : digits)) + ' 万';
+    return String(Math.round(n * 100) / 100);
+  }
+
+  function buildOption(type, data, cfg) {
+    var t = chartTheme();
+    var names = data.map(function (d) { return d.name; });
+    var vals = data.map(function (d) { return d.value; });
+    var axisLabel = { color: t.text3, fontSize: 11 };
+    var splitLine = { lineStyle: { color: t.border, type: 'dashed' } };
+    var axisLine = { lineStyle: { color: t.border } };
+    var valFmt = cfg.compact ? function (v) { return fmtCompact(v, 0); } : null;
+    var base = {
+      color: t.palette,
+      textStyle: { color: t.text2, fontFamily: 'inherit' },
+      tooltip: {
+        trigger: type === 'pie' || type === 'donut' || type === 'funnel' ? 'item' : 'axis',
+        backgroundColor: t.surface, borderColor: t.border, borderWidth: 1,
+        textStyle: { color: t.text2, fontSize: 12 }, extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(16,24,40,.12);',
+        valueFormatter: cfg.tooltipFormat === 'compact' ? function (v) { return fmtCompact(v); } : (cfg.unit ? function (v) { return Number(v).toLocaleString('zh-CN') + ' ' + cfg.unit; } : undefined)
+      }
+    };
+    if (type === 'bar' || type === 'hbar') {
+      var horizontal = type === 'hbar';
+      var catAxis = { type: 'category', data: names, axisLabel: horizontal ? { color: t.text2, fontSize: 12 } : axisLabel, axisLine: axisLine, axisTick: { show: false } };
+      var valAxis = { type: 'value', axisLabel: valFmt ? Object.assign({}, axisLabel, { formatter: valFmt }) : axisLabel, splitLine: splitLine };
+      return Object.assign(base, {
+        grid: { left: horizontal ? 8 : 44, right: 16, top: 24, bottom: horizontal ? 8 : 40, containLabel: true },
+        xAxis: horizontal ? valAxis : catAxis,
+        yAxis: horizontal ? catAxis : valAxis,
+        series: [{
+          type: 'bar', data: vals, barMaxWidth: 28,
+          itemStyle: { borderRadius: horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0], color: t.palette[0] },
+          label: cfg.showLabel ? { show: true, position: horizontal ? 'right' : 'top', color: t.text2, fontSize: 11, formatter: cfg.compact ? function (p) { return fmtCompact(p.value); } : undefined } : { show: false }
+        }]
+      });
+    }
+    if (type === 'line') {
+      return Object.assign(base, {
+        grid: { left: 44, right: 16, top: 24, bottom: 36, containLabel: true },
+        xAxis: { type: 'category', boundaryGap: false, data: names, axisLabel: axisLabel, axisLine: axisLine, axisTick: { show: false } },
+        yAxis: { type: 'value', axisLabel: valFmt ? Object.assign({}, axisLabel, { formatter: valFmt }) : axisLabel, splitLine: splitLine },
+        series: [{
+          type: 'line', data: vals, smooth: true, symbol: 'circle', symbolSize: 7,
+          lineStyle: { width: 3, color: t.palette[0] }, itemStyle: { color: t.palette[0] },
+          areaStyle: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: t.palette[0] + '33' }, { offset: 1, color: t.palette[0] + '03' }
+          ])
+        }]
+      });
+    }
+    if (type === 'pie' || type === 'donut') {
+      return Object.assign(base, {
+        legend: { bottom: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: t.text2, fontSize: 12 } },
+        series: [{
+          type: 'pie', radius: type === 'donut' ? ['46%', '72%'] : '70%', center: ['50%', '44%'],
+          avoidLabelOverlap: true,
+          itemStyle: { borderColor: t.surface, borderWidth: 2, borderRadius: 6 },
+          label: { color: t.text2, fontSize: 12 },
+          labelLine: { lineStyle: { color: t.border } },
+          data: data.map(function (d, i) { return { name: d.name, value: d.value, itemStyle: { color: t.palette[i % t.palette.length] } }; })
+        }]
+      });
+    }
+    if (type === 'funnel') {
+      return Object.assign(base, {
+        legend: { bottom: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: t.text2, fontSize: 12 } },
+        series: [{
+          type: 'funnel', top: 16, bottom: 48, left: '8%', width: '84%', minSize: '20%',
+          gap: 3, sort: 'none',
+          label: { color: t.text2, fontSize: 12, formatter: '{b}  {c}' },
+          itemStyle: { borderColor: t.surface, borderWidth: 2, borderRadius: 6 },
+          data: data.map(function (d, i) { return { name: d.name, value: d.value, itemStyle: { color: t.palette[i % t.palette.length] } }; })
+        }]
+      });
+    }
+    throw new Error('不支持的图表类型：' + type);
+  }
+
+  function refreshCharts() { chartBindings.forEach(function (fn) { try { fn(); } catch (e) {} }); }
+
+  /**
+   * PF.chart(el, cfg)：绑数据集的图表，数据变更自动刷新
+   * cfg: { type:'bar'|'hbar'|'line'|'pie'|'donut'|'funnel', dataset, agg:'sum'|'count'|'avg'|'max'|'min',
+   *        x:分类字段(bar/line), name:分类字段(pie/donut/funnel), y:数值字段(count 时省略),
+   *        granularity:'month'|'year'(line 时间桶), filters:{字段:值}, order:[原始值...](漏斗顺序),
+   *        top:N, unit:'万元', compact:true, showLabel:true, tooltipFormat:'compact' }
+   */
+  window.PF.chart = function (el, cfg) {
+    if (!el || !cfg || !cfg.dataset) { console.warn('[PF.chart] 缺少容器或 dataset'); return; }
+    if (!el.offsetHeight) el.style.height = '300px';
+    var inst = null;
+    var render = function () {
+      var data = aggregate(cfg);
+      var option = buildOption(cfg.type || 'bar', data, cfg);
+      inst.setOption(option, { notMerge: true });
+    };
+    ensureECharts().then(function (ec) {
+      inst = ec.init(el);
+      pageChartInsts.push(inst);
+      render();
+      chartBindings.push(render);
+      var onResize = function () { inst.resize(); };
+      window.addEventListener('resize', onResize);
+      PF.onLeave(function () {
+        window.removeEventListener('resize', onResize);
+        chartBindings.splice(chartBindings.indexOf(render), 1);
+        inst.dispose();
+        pageChartInsts.splice(pageChartInsts.indexOf(inst), 1);
+      });
+    }).catch(function (e) {
+      el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--pf-text-3);font-size:13px">图表加载失败：' + e.message + '</div>';
+    });
+  };
+
+  /**
+   * PF.metric(el, cfg)：绑数据集的动态指标数字，数据变更自动刷新
+   * cfg: { dataset, agg, field(count 时省略), filters, prefix, suffix, compact }
+   */
+  window.PF.metric = function (el, cfg) {
+    if (!el || !cfg || !cfg.dataset) return;
+    var render = function () {
+      var v = metricValue(cfg);
+      // compact 自带「万/亿」单位，不再追加 suffix（避免「1.0 万 万元」）；字段本身已是万元单位时不要用 compact
+      var text = cfg.compact ? fmtCompact(v) : Number(v).toLocaleString('zh-CN');
+      el.textContent = (cfg.prefix || '') + text + (cfg.compact ? '' : (cfg.suffix || ''));
+    };
+    render();
+    chartBindings.push(render);
+    PF.onLeave(function () { chartBindings.splice(chartBindings.indexOf(render), 1); });
+  };
+
+  // ---------- 导航 ----------
+  function navGroups() {
+    var groups = {}, order = [];
+    (state.spec.nav || []).forEach(function (n) {
+      var g = n.group || '';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(n);
+    });
+    return order.map(function (g) { return { group: g, items: groups[g] }; });
+  }
+  function navDot(st) {
+    if (st === 'pending') return el('span', 'pf-badge-dot pf-dot-pending animate-pulse pf-tn-dot');
+    if (st === 'error') return el('span', 'pf-badge-dot pf-dot-error pf-tn-dot');
+    return null;
+  }
+  function navDelBtn(n) {
+    var del = el('button', 'pf-nav-del', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>');
+    del.title = '删除这个采集页';
+    del.setAttribute('aria-label', '删除页面');
+    del.onclick = function (ev) { ev.stopPropagation(); askDeletePage(n.pageId, n.title); };
+    return del;
+  }
+  function navGo(n, st) {
+    if (st !== 'ready') { toast('该页面还在生成中', 'info'); return; }
+    go(n.pageId, {});
+  }
+
+  function renderSidebarNav(groups) {
+    var nav = $('pf-nav');
+    groups.forEach(function (grp) {
+      if (grp.group) nav.appendChild(el('div', 'pf-nav-group px-4 pt-3 pb-1 text-[11px] font-semibold', grp.group));
+      grp.items.forEach(function (n) {
+        var st = pageStatus(n.pageId);
+        var pg = pageById(n.pageId);
+        var isExternal = pg && pg.source && pg.source.type === 'external';
+        var item = el('div', 'pf-nav-item px-4 py-2 mx-2 rounded-md flex items-center justify-between' +
+          (n.pageId === state.currentPage ? ' active' : '') + (st !== 'ready' ? ' pending' : ''));
+        item.appendChild(el('span', 'truncate', n.title));
+        var right = el('span', 'inline-flex items-center gap-1 flex-none');
+        var dot = navDot(st); if (dot) right.appendChild(dot);
+        if (isExternal && !OFFLINE) right.appendChild(navDelBtn(n));
+        item.appendChild(right);
+        item.onclick = function () { navGo(n, st); };
+        nav.appendChild(item);
+      });
+    });
+  }
+
+  // 顶导航下拉：一个全局 fixed 浮层（避免菜单栏 overflow 裁剪），JS 定位
+  var tnMenu = null, tnHideTimer = null, tnCurrent = null;
+  function ensureTnMenu() {
+    if (tnMenu) return tnMenu;
+    tnMenu = el('div', 'pf-tn-menu');
+    document.body.appendChild(tnMenu);
+    tnMenu.addEventListener('mouseenter', function () { clearTimeout(tnHideTimer); });
+    tnMenu.addEventListener('mouseleave', hideTnMenu);
+    window.addEventListener('resize', hideTnMenu);
+    return tnMenu;
+  }
+  function hideTnMenu() {
+    tnCurrent = null;
+    tnHideTimer = setTimeout(function () { if (tnMenu) tnMenu.classList.remove('show'); }, 120);
+  }
+  function showTnMenu(wrap) {
+    clearTimeout(tnHideTimer);
+    tnCurrent = wrap;
+    var menu = ensureTnMenu();
+    menu.innerHTML = '';
+    (wrap._items || []).forEach(function (it) {
+      var row = el('div', 'pf-tn-item' + (it.n.pageId === state.currentPage ? ' active' : '') + (it.st !== 'ready' ? ' pending' : ''));
+      var dot = navDot(it.st); if (dot) row.appendChild(dot);
+      row.appendChild(el('span', 'truncate flex-1', it.n.title));
+      var pg = pageById(it.n.pageId);
+      if (pg && pg.source && pg.source.type === 'external' && !OFFLINE) row.appendChild(navDelBtn(it.n));
+      row.addEventListener('click', function () { hideTnMenuNow(); navGo(it.n, it.st); });
+      menu.appendChild(row);
+    });
+    menu.classList.add('show');
+    var r = wrap.getBoundingClientRect();
+    menu.style.visibility = 'hidden';
+    requestAnimationFrame(function () {
+      var left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8));
+      menu.style.left = left + 'px';
+      menu.style.top = (r.bottom - 1) + 'px';
+      menu.style.visibility = '';
+    });
+  }
+  function hideTnMenuNow() {
+    clearTimeout(tnHideTimer); tnCurrent = null;
+    if (tnMenu) tnMenu.classList.remove('show');
+  }
+
+  function renderTopNav(groups) {
+    var bar = $('pf-topnav');
+    var currentGroup = '';
+    var cur = pageById(state.currentPage);
+    if (cur) {
+      var navRow = (state.spec.nav || []).find(function (n) { return n.pageId === state.currentPage; });
+      currentGroup = navRow ? (navRow.group || '') : (cur.group || '');
+    }
+    groups.forEach(function (grp) {
+      // 无分组名，或组内只有一个页 → 直接平铺按钮；多页 → 模块下拉
+      if (!grp.group || grp.items.length === 1) {
+        grp.items.forEach(function (n) {
+          var st = pageStatus(n.pageId);
+          var flat = el('button', 'pf-tn-flat' + (n.pageId === state.currentPage ? ' active' : '') + (st !== 'ready' ? ' pending' : ''));
+          flat.appendChild(el('span', 'truncate', n.title));
+          var dot = navDot(st); if (dot) flat.appendChild(dot);
+          flat.onclick = function () { navGo(n, st); };
+          bar.appendChild(flat);
+        });
+        return;
+      }
+      var wrap = el('div', 'pf-tn-group' + (grp.group === currentGroup ? ' active' : ''));
+      wrap._items = grp.items.map(function (n) { return { n: n, st: pageStatus(n.pageId) }; });
+      var label = el('button', 'pf-tn-label');
+      label.appendChild(el('span', 'truncate', grp.group));
+      label.innerHTML += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+      wrap.appendChild(label);
+      // 桌面 hover 展开；点击切换（触摸板/触屏）
+      wrap.addEventListener('mouseenter', function () { showTnMenu(wrap); });
+      wrap.addEventListener('mouseleave', hideTnMenu);
+      label.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (tnCurrent === wrap) hideTnMenuNow(); else showTnMenu(wrap);
+      });
+      bar.appendChild(wrap);
+    });
+    // 点空白 / 滚动收起
+    if (!(window)._pfTnDocBound) {
+      (window)._pfTnDocBound = true;
+      document.addEventListener('click', hideTnMenuNow);
+      window.addEventListener('scroll', hideTnMenuNow, true);
+    }
+  }
+
+  function renderNav() {
+    var groups = navGroups();
+    hideTnMenuNow();
+    $('pf-nav').innerHTML = '';
+    var bar = $('pf-topnav'); if (bar) bar.innerHTML = '';
+    renderSidebarNav(groups);
+    if (bar) renderTopNav(groups);
+  }
+
+  // ---------- 删除站外采集页 ----------
+  var pendingDelPage = null;
+  // 沉浸态侧栏隐藏，删除入口收进评审浮动工具条；仅站外页、在线态显示
+  function updateDelPageBtn(p) {
+    var btn = $('pf-btn-del-page');
+    if (!btn) return;
+    var show = !!p && !OFFLINE && p.source && p.source.type === 'external';
+    btn.classList.toggle('hidden', !show);
+  }
+  function askDeletePage(pageId, title) {
+    pendingDelPage = pageId;
+    $('pf-delpage-name').textContent = '「' + title + '」';
+    $('pf-delpage-mask').classList.remove('hidden');
+  }
+  function closeDelPage() {
+    $('pf-delpage-mask').classList.add('hidden');
+    pendingDelPage = null;
+  }
+  function doDeletePage() {
+    var pageId = pendingDelPage;
+    if (!pageId) return;
+    var btn = $('pf-delpage-ok');
+    var old = btn.textContent;
+    btn.disabled = true; btn.classList.add('opacity-60', 'cursor-wait'); btn.textContent = '删除中…';
+    var wasCurrent = pageId === state.currentPage;
+    apiDel(API + '/prototype/pages/' + pageId)
+      .then(function (d) {
+        closeDelPage();
+        toast('已删除采集页「' + (d.title || '') + '」');
+        if (wasCurrent) state.currentPage = null; // reloadSpec 会自动落到第一个剩余页
+        return reloadSpec().then(function () {
+          if (wasCurrent && !(state.spec.pages || []).length) {
+            history.replaceState(null, '', '#/');
+            document.body.classList.remove('pf-immersive');
+            $('pf-btn-del-page').classList.add('hidden');
+            $('pf-page-root').innerHTML = '<div class="p-10 text-center text-[13px]" style="color:var(--pf-text-3)">采集页已全部删除，可重新在原站采集。</div>';
+          }
+        });
+      })
+      .catch(function (e) { toast('删除失败：' + e.message, 'error'); })
+      .finally(function () { btn.disabled = false; btn.classList.remove('opacity-60', 'cursor-wait'); btn.textContent = old; });
+  }
+
+  // ---------- 路由 ----------
+  function parseHash() {
+    var m = location.hash.match(/#\/page\/([\w-]+)(?:\?(.+))?/);
+    if (!m) return null;
+    var params = {};
+    if (m[2]) new URLSearchParams(m[2]).forEach(function (v, k) { params[k] = v; });
+    return { pageId: m[1], params: params };
+  }
+  function setHash(pageId, params) {
+    var qs = new URLSearchParams(params || {}).toString();
+    history.replaceState(null, '', '#/page/' + pageId + (qs ? '?' + qs : ''));
+  }
+  function go(pageId, params) {
+    if (!pageById(pageId)) { toast('该页面将在对应模块生成后上线', 'info'); return; }
+    state.currentPage = pageId;
+    state.params = params || {};
+    setHash(pageId, state.params);
+    loadPage();
+    renderNav();
+  }
+  window.addEventListener('hashchange', function () {
+    var h = parseHash();
+    if (h && h.pageId !== state.currentPage) go(h.pageId, h.params);
+  });
+
+  /** 注入页面 HTML 片段并执行其中 <script> */
+  function loadPage() {
+    var p = pageById(state.currentPage);
+    if (!p) return;
+    $('pf-page-title').textContent = p.title;
+    // 沉浸态：门户/官网/营销/登录页全屏（隐侧栏顶栏）；后台页恢复
+    document.body.classList.toggle('pf-immersive', !!p.immersive);
+    updateDelPageBtn(p);
+    var st = pageStatus(p.id);
+    var loading = $('pf-page-loading');
+    var errBox = $('pf-page-error');
+    errBox.classList.add('hidden');
+    if (st !== 'ready' || !p.html) {
+      $('pf-gen-tip').classList.toggle('hidden', st === 'error');
+      if (st === 'error') {
+        loading.classList.add('hidden');
+        $('pf-page-root').innerHTML = '<div class="p-10 text-center text-sm" style="color:var(--pf-text-3)">该页面生成失败。<br>可以开启标注模式贴意见让 AI 修补，或在平台重新生成。</div>';
+      } else {
+        loading.classList.remove('hidden');
+        $('pf-page-root').innerHTML = '';
+      }
+      return;
+    }
+    loading.classList.add('hidden');
+    $('pf-gen-tip').classList.add('hidden');
+
+    // 离开旧页面：执行清理钩子
+    state.cleanups.forEach(function (fn) { try { fn(); } catch (e) {} });
+    state.cleanups = [];
+
+    var root = $('pf-page-root');
+    root.innerHTML = p.html;
+    // innerHTML 插入的 script 不执行，手动按顺序取出执行
+    var scripts = Array.prototype.slice.call(root.querySelectorAll('script'));
+    scripts.forEach(function (oldScript) {
+      var s = document.createElement('script');
+      s.textContent = oldScript.textContent;
+      try {
+        oldScript.parentNode.replaceChild(s, oldScript);
+      } catch (e) {
+        showPageError(e);
+      }
+    });
+    window.scrollTo(0, 0);
+    renderReqDrawer();
+    renderAnnotBadges(); // 切页后刷新圈选角标（非标注模式内部会清空）
+  }
+  function showPageError(e) {
+    var box = $('pf-page-error');
+    box.classList.remove('hidden');
+    box.textContent = '页面脚本出错：' + (e && e.message ? e.message : e) + '（可在标注模式里贴意见让 AI 修）';
+  }
+  // 页面代码里未捕获的错误也显示出来
+  window.addEventListener('error', function (e) {
+    if (state.currentPage) showPageError(e.error || e.message);
+  });
+
+  // ---------- 标注 ----------
+  function setAnnotMode(on) {
+    state.annotMode = on;
+    document.body.classList.toggle('pf-annot-mode', on);
+    $('pf-btn-page-annot').classList.toggle('hidden', !on);
+    var btn = $('pf-btn-annot');
+    if (on) btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m20 20-4.5-4.5"/><circle cx="11" cy="11" r="7"/></svg><span class="pf-annot-label">退出标注</span>';
+    else btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 8.4-9.2 9.2-5-5L14 6.8l7.2 1.6z"/><path d="m7 14-4 4"/></svg><span class="pf-annot-label">标注模式</span>';
+    btn.classList.toggle('on', on);
+    if (on) {
+      ensurePickerDom();
+      loadAnnotations().then(renderAnnotBadges);
+    } else {
+      hidePicker();
+      picker.badges.forEach(function (x) { x.remove(); });
+      picker.badges = [];
+      document.querySelectorAll('.pf-ann-target').forEach(function (el) { el.classList.remove('pf-ann-target'); });
+    }
+  }
+  $('pf-btn-annot').onclick = function () {
+    if (OFFLINE) { toast('导出的离线包以浏览为主，贴意见请在在线原型里操作', 'info'); return; }
+    setAnnotMode(!state.annotMode);
+    if (state.annotMode) loadAnnotations();
+  };
+
+  // ===== 双态：演示态（默认，像真实产品）/ 评审态（显工具+开标注） =====
+  function setReviewMode(on) {
+    if (on && OFFLINE) { toast('离线导出包仅供演示，贴意见请回到 ProtoForge 在线原型', 'info'); return; }
+    state.reviewMode = on;
+    document.body.classList.toggle('pf-review-mode', on);
+    var fabLabel = $('pf-review-fab-label');
+    if (on) {
+      if (fabLabel) fabLabel.textContent = '返回演示';
+      setAnnotMode(true); loadAnnotations();
+      toast('已进入评审：点击任意元素贴意见，顶栏可查看/应用意见', 'info');
+    } else {
+      if (fabLabel) fabLabel.textContent = '开始评审';
+      setAnnotMode(false);
+    }
+  }
+  $('pf-review-fab').onclick = function () { setReviewMode(!state.reviewMode); };
+  if (OFFLINE) { $('pf-review-fab').style.display = 'none'; }
+  // 整页意见：标注模式下顶栏按钮
+  $('pf-btn-page-annot').onclick = function () {
+    if (!state.currentPage) return;
+    openDraft({
+      kind: 'page',
+      label: '',
+      pageId: state.currentPage,
+      pageTitle: (pageById(state.currentPage) || {}).title || '',
+    });
+  };
+  // ============================================================
+  // 圈选式标注（无埋点思路）：hover 吸附语义单元，点击选中，粒度可拨
+  // ============================================================
+  var picker = {
+    overlay: null, bar: null,
+    candidates: [], idx: -1,
+    badges: [],
+  };
+
+  function elText(el) { return (el.textContent || '').replace(/\s+/g, ' ').trim(); }
+
+  // 站外采集重建页的卡片普遍无 class，靠内联 style 画（border+圆角+背景）。
+  // 识别这种「看起来是卡片」的容器：必须同时有边框、圆角、不透明背景，且内含多个子块（挡掉徽章/标签/输入框）。
+  function isInlineCard(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var tag = el.tagName.toLowerCase();
+    if (['div', 'section', 'article', 'li', 'aside'].indexOf(tag) === -1) return false;
+    var st = getComputedStyle(el);
+    if (!st) return false;
+    var bw = parseFloat(st.borderTopWidth || '0') || 0;
+    var radius = parseFloat(st.borderTopLeftRadius || '0') || 0;
+    var bg = st.backgroundColor || '';
+    var hasBg = !!bg && bg !== 'transparent' && !/rgba\([^)]*,\s*0\.?0*\)/.test(bg);
+    if (!(bw > 0 && radius >= 4 && hasBg)) return false;
+    // 结构闸：至少 2 个直接子块、3 个后代元素、6 个字以上，排除 chip/badge/小标签
+    if (el.children.length < 2) return false;
+    if (el.querySelectorAll('*').length < 3) return false;
+    if (elText(el).length < 6) return false;
+    return true;
+  }
+
+  // 无 class 内联卡没有 h/.title，从「非绝对定位 + 加粗 + 字号最大 + 非纯数字」的文本节点里提标题
+  function bestInlineTitle(el) {
+    var best = '', bestSize = 0;
+    Array.prototype.forEach.call(el.querySelectorAll('*'), function (n) {
+      var cs = getComputedStyle(n);
+      if (cs.position === 'absolute') return;
+      var own = Array.prototype.filter.call(n.childNodes, function (nd) { return nd.nodeType === 3 && nd.textContent.trim(); })
+        .map(function (nd) { return nd.textContent.trim(); }).join('');
+      if (!own || own.length > 20 || /^\d+$/.test(own)) return;
+      var fw = parseInt(cs.fontWeight, 10) || 400;
+      if (fw < 600) return;
+      var fs = parseFloat(cs.fontSize) || 0;
+      if (fs > bestSize) { bestSize = fs; best = own; }
+    });
+    return best;
+  }
+
+  // 元素语义分类：field(字段) / action(按钮) / section(区块) / element(元素)
+  function classify(el) {
+    if (!el || el.nodeType !== 1) return null;
+    var tag = el.tagName.toLowerCase();
+    var cls = (el.className && typeof el.className === 'string') ? el.className : '';
+    // 按钮：button/a/role=button/onclick/pf-btn
+    if (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button' ||
+        /pf-btn|\bbtn\b/.test(cls) || el.hasAttribute('onclick')) {
+      return 'action';
+    }
+    // Tailwind 原型里大量可点击元素是 div.cursor-pointer：短文本、或无文本但含图标才算按钮（避免含图标的整个导航/卡片组误伤）
+    var cpText = elText(el);
+    if (/cursor-pointer/.test(cls) && (cpText ? cpText.length <= 10 : !!el.querySelector('svg,img,i'))) {
+      return 'action';
+    }
+    // 纯图标：自身或唯一内容是 svg/img/i 且无文字
+    if (['svg', 'img', 'i'].indexOf(tag) !== -1 ||
+        (el.querySelector('svg,img,i') && !elText(el))) {
+      return 'icon';
+    }
+    // 表格列头 / 表单 label → 字段
+    if (tag === 'th') return 'field';
+    if (tag === 'label') return 'field';
+    // 表格单元格：字段（标注具体数据项）
+    if (tag === 'td') return 'field';
+    // 输入控件
+    if (['input', 'select', 'textarea'].indexOf(tag) !== -1) return 'field';
+    // 区块：卡片/面板/表格容器/弹窗
+    if (/pf-card|pf-modal|\bcard\b|\bpanel\b|\bsection\b/.test(cls)) return 'section';
+    if (tag === 'table' || tag === 'form' || tag === 'fieldset') return 'section';
+    // 站外采集页：无 class、纯内联样式画的卡片
+    if (isInlineCard(el)) return 'section';
+    // 描述列表项（详情页 label-value）
+    if (tag === 'dt' || tag === 'dd') return 'field';
+    return null;
+  }
+
+  var KIND_CN = { field: '字段', action: '按钮', icon: '图标', section: '区块', element: '元素', page: '整页' };
+
+  // 无语义元素的标签兜底链：aria-label/title → img alt → 文本片段 → ''（交由显示端去重）
+  function genericLabel(el) {
+    return (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title'))) ||
+      (el.querySelector && (el.querySelector('img[alt]') || {}).alt) ||
+      elText(el).slice(0, 20) || '';
+  }
+
+  // 从 hover 目标向上收集语义候选（去重、按粒度从小到大）
+  function buildCandidates(target) {
+    var root = $('pf-page-root');
+    var out = [];
+    var seen = new Set();
+    var node = target;
+    while (node && node !== root && node !== document.body) {
+      var k = classify(node);
+      // 表格特殊处理：td/th 向上补充「整行 tr」作为区块候选
+      if (k === 'field' && (node.tagName === 'TD' || node.tagName === 'TH')) {
+        var row = node.closest ? node.closest('tr') : null;
+        if (row && !seen.has(row)) { seen.add(row); out.push({ el: row, kind: 'section', label: '表格行' }); }
+      }
+      if (k && !seen.has(node)) {
+        seen.add(node);
+        out.push({ el: node, kind: k, label: pickLabel(node, k) });
+      }
+      node = node.parentNode;
+    }
+    // 默认加一个「元素」兜底（最内层元素），标签走兜底链，允许为空
+    if (!out.length && target !== root) {
+      out.push({ el: target, kind: 'element', label: genericLabel(target) });
+    }
+    // 同种类+同标签只保留最内层一个（如 svg 与两层无文本图标包裹层都被判成 icon）
+    var dedupSeen = new Set();
+    out = out.filter(function (c) {
+      var key = c.kind + '||' + c.label;
+      if (dedupSeen.has(key)) return false;
+      dedupSeen.add(key);
+      return true;
+    });
+    return out;
+  }
+
+  function pickLabel(el, kind) {
+    var tag = el.tagName.toLowerCase();
+    if (kind === 'field') {
+      if (tag === 'th') return elText(el) || '表格列';
+      if (tag === 'td') {
+        // 找列头
+        var i = Array.prototype.indexOf.call(el.parentNode.children, el);
+        var table = el.closest ? el.closest('table') : null;
+        var th = table ? table.querySelectorAll('thead th')[i] : null;
+        return (th ? elText(th) + ' · ' : '') + (elText(el).slice(0, 12) || '单元格');
+      }
+      if (tag === 'label') return elText(el) || '字段';
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') {
+        var ph = el.getAttribute('placeholder') || el.getAttribute('aria-label');
+        if (ph) return ph;
+        if (el.id) {
+          var lab = document.querySelector('label[for="' + el.id + '"]');
+          if (lab && elText(lab)) return elText(lab);
+        }
+        return tag === 'textarea' ? '文本域' : '输入框';
+      }
+      var lab = el.querySelector('label');
+      if (lab) return elText(lab);
+      // 详情页：找前面的 dt 或内部第一个短文本
+      var dt = el.previousElementSibling && el.previousElementSibling.tagName === 'DT' ? el.previousElementSibling : null;
+      if (dt) return elText(dt);
+      return elText(el).slice(0, 16) || '字段';
+    }
+    if (kind === 'icon') return genericLabel(el) || '图标';
+    if (kind === 'action') return elText(el).slice(0, 20) || genericLabel(el) || '按钮';
+    if (kind === 'section') {
+      var h = el.querySelector('h1,h2,h3,h4,.title,[class*=title]');
+      if (h && elText(h)) return elText(h).slice(0, 20);
+      var cap = el.querySelector('caption');
+      if (cap) return elText(cap).slice(0, 20);
+      // 无 class 内联卡：按加粗字号提真正标题，避免回退成整块正文
+      if (isInlineCard(el)) {
+        var t = bestInlineTitle(el);
+        if (t) return t;
+      }
+      return elText(el).slice(0, 16) || '区块';
+    }
+    return elText(el).slice(0, 20) || '元素';
+  }
+
+  // 定位路径：标签 + 同类型序号 + 文本锚点（同一版 HTML 内稳定）
+  function buildPath(el) {
+    var root = $('pf-page-root');
+    var parts = [];
+    var node = el;
+    while (node && node !== root && node.nodeType === 1) {
+      var tag = node.tagName.toLowerCase();
+      var parent = node.parentNode;
+      var idx = 1;
+      if (parent) {
+        var sibs = Array.prototype.filter.call(parent.children, function (c) { return c.tagName === node.tagName; });
+        idx = sibs.indexOf(node) + 1;
+      }
+      var txt = elText(node).slice(0, 12);
+      parts.unshift(tag + ':nth-of-type(' + idx + ')' + (txt ? '[' + txt + ']' : ''));
+      node = parent;
+    }
+    return parts.join(' > ');
+  }
+
+  // 按路径重新定位元素
+  function resolvePath(path) {
+    if (!path) return null;
+    var root = $('pf-page-root');
+    var node = root;
+    var segs = path.split(' > ');
+    for (var i = 0; i < segs.length; i++) {
+      var m = segs[i].match(/^([\w-]+):nth-of-type\((\d+)\)/);
+      if (!m) return null;
+      var tag = m[1], n = parseInt(m[2], 10);
+      var sibs = node ? Array.prototype.filter.call(node.children || [], function (c) { return c.tagName.toLowerCase() === tag; }) : [];
+      node = sibs[n - 1] || null;
+      if (!node) return null;
+    }
+    return node;
+  }
+
+  function ensurePickerDom() {
+    if (picker.overlay) return;
+    picker.overlay = document.createElement('div');
+    picker.overlay.className = 'pf-pick-overlay';
+    picker.overlay.style.display = 'none';
+    document.body.appendChild(picker.overlay);
+    picker.bar = document.createElement('div');
+    picker.bar.className = 'pf-pick-bar';
+    document.body.appendChild(picker.bar);
+  }
+
+  function moveOverlay(el) {
+    var r = el.getBoundingClientRect();
+    var o = picker.overlay;
+    o.style.display = 'block';
+    o.style.left = (r.left - 2) + 'px';
+    o.style.top = (r.top - 2) + 'px';
+    o.style.width = r.width + 'px';
+    o.style.height = r.height + 'px';
+  }
+
+  function hidePicker() {
+    if (picker.overlay) picker.overlay.style.display = 'none';
+    if (picker.bar) picker.bar.style.display = 'none';
+    picker.candidates = []; picker.idx = -1;
+  }
+
+  function showBar(cand) {
+    var bar = picker.bar;
+    var r = cand.el.getBoundingClientRect();
+    var btns = picker.candidates.map(function (c, i) {
+      return '<button data-i="' + i + '" class="' + (i === picker.idx ? 'active' : '') + '">' +
+        KIND_CN[c.kind] + (c.kind === 'section' || c.kind === 'field' ? '' : '') + '</button>';
+    }).join('');
+    bar.innerHTML = '<span class="pf-pick-label">' + escapeHtml(cand.label) + '</span>' + btns +
+      '<span class="pf-pick-hint">点击标注 · ↑↓ 切换粒度</span>';
+    bar.style.display = 'flex';
+    // 定位：元素下方，超出视口则放上方
+    var bh = 34;
+    var top = r.bottom + 6;
+    if (top + bh > window.innerHeight) top = r.top - bh - 6;
+    bar.style.left = Math.min(r.left, window.innerWidth - bar.offsetWidth - 10) + 'px';
+    bar.style.top = Math.max(8, top) + 'px';
+    Array.prototype.forEach.call(bar.querySelectorAll('button'), function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation(); e.preventDefault();
+        picker.idx = parseInt(b.getAttribute('data-i'), 10);
+        var c = picker.candidates[picker.idx];
+        moveOverlay(c.el); showBar(c);
+      };
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function onPickerMouseOver(e) {
+    if (!state.annotMode) return;
+    var root = $('pf-page-root');
+    if (!root.contains(e.target)) { hidePicker(); return; }
+    var cands = buildCandidates(e.target);
+    if (!cands.length) { hidePicker(); return; }
+    picker.candidates = cands;
+    // 默认选最具体的（第一个），但按钮优先
+    var actionIdx = cands.findIndex(function (c) { return c.kind === 'action'; });
+    picker.idx = actionIdx !== -1 ? actionIdx : 0;
+    var cand = cands[picker.idx];
+    moveOverlay(cand.el);
+    showBar(cand);
+  }
+
+  function onPickerClick(e) {
+    if (!state.annotMode) return;
+    var root = $('pf-page-root');
+    if (!root.contains(e.target)) return;
+    // 点在拨杆/浮层上不拦截
+    if (picker.bar && picker.bar.contains(e.target)) return;
+    if (!picker.candidates.length) return;
+    e.preventDefault(); e.stopPropagation();
+    var c = picker.candidates[picker.idx];
+    if (!c) return;
+    openDraft({
+      kind: c.kind,
+      label: c.label,
+      path: buildPath(c.el),
+      pageId: state.currentPage,
+      pageTitle: (pageById(state.currentPage) || {}).title || '',
+    });
+    hidePicker();
+  }
+
+  function onPickerKey(e) {
+    if (!state.annotMode || !picker.candidates.length) return;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      var dir = e.key === 'ArrowUp' ? -1 : 1;
+      picker.idx = Math.max(0, Math.min(picker.candidates.length - 1, picker.idx + dir));
+      var c = picker.candidates[picker.idx];
+      moveOverlay(c.el); showBar(c);
+    }
+  }
+
+  // 已标注元素角标
+  function renderAnnotBadges() {
+    picker.badges.forEach(function (b) { b.remove(); });
+    picker.badges = [];
+    if (!state.annotMode) return;
+    (state.annotations || []).forEach(function (a) {
+      if (a.page_id !== state.currentPage || !a.target_path) return;
+      var el = resolvePath(a.target_path);
+      if (!el) return;
+      el.classList.add('pf-ann-target');
+      var badge = document.createElement('div');
+      badge.className = 'pf-ann-badge ' + (a.status === 'open' ? 'pending' : 'done');
+      badge.textContent = a.status === 'open' ? '!' : '✓';
+      badge.title = (a.target_label || '') + '：' + a.content;
+      badge.onclick = function (ev) { ev.stopPropagation(); openAnnotDrawer(); };
+      var r = el.getBoundingClientRect();
+      badge.style.position = 'fixed';
+      badge.style.left = (r.right - 4) + 'px';
+      badge.style.top = (r.top - 6) + 'px';
+      document.body.appendChild(badge);
+      picker.badges.push(badge);
+    });
+  }
+
+  document.addEventListener('mouseover', onPickerMouseOver, true);
+  document.addEventListener('click', onPickerClick, true);
+  document.addEventListener('keydown', onPickerKey, true);
+  window.addEventListener('scroll', function () { if (state.annotMode) renderAnnotBadges(); }, true);
+  window.addEventListener('resize', function () { if (state.annotMode) renderAnnotBadges(); });
+
+  function openDraft(t) {
+    state.draft = t;
+    var kindName = { field: '字段', action: '按钮', icon: '图标', section: '区块', page: '整页', element: '元素' }[t.kind] || '元素';
+    $('pf-draft-target').textContent = '页面「' + t.pageTitle + '」· ' + kindName +
+      (t.label && t.label !== kindName ? '：' + t.label : '');
+    $('pf-draft-author').value = localStorage.getItem('pf-annot-author') || '';
+    $('pf-draft-content').value = '';
+    state.draftImages = [];
+    renderDraftImages();
+    $('pf-draft-mask').classList.remove('hidden');
+    setTimeout(function () { $('pf-draft-content').focus(); }, 50);
+  }
+  function openAnnotDrawer() {
+    loadAnnotations().then(function () { $('pf-annot-mask').classList.remove('hidden'); });
+  }
+  $('pf-draft-x').onclick = function () { $('pf-draft-mask').classList.add('hidden'); };
+  $('pf-draft-cancel').onclick = function () { $('pf-draft-mask').classList.add('hidden'); };
+  $('pf-draft-mask').addEventListener('click', function (ev) { if (ev.target === this) this.classList.add('hidden'); });
+
+  // ===== 评审意见附图：选文件 / 拖拽 / 粘贴 =====
+  function renderDraftImages() {
+    var box = $('pf-draft-imgs');
+    box.innerHTML = '';
+    (state.draftImages || []).forEach(function (im, i) {
+      var t = el('div', 'pf-img-thumb');
+      var img = document.createElement('img'); img.src = im.url; t.appendChild(img);
+      if (im.uploading) { var ld = el('div', 'pf-img-loading', '…'); t.appendChild(ld); }
+      else { var xb = el('button', 'pf-img-x', '×'); xb.type = 'button'; xb.title = '移除';
+        xb.onclick = function () { state.draftImages.splice(i, 1); renderDraftImages(); };
+        t.appendChild(xb); }
+      box.appendChild(t);
+    });
+    box.classList.toggle('hidden', !state.draftImages.length);
+    $('pf-draft-imghint').textContent = state.draftImages.length ? '继续添加：点击 / 拖拽 / 粘贴' : '点击选图 · 拖拽到此处 · 或直接 Ctrl/⌘+V 粘贴截图';
+  }
+  function addDraftFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []).filter(function (f) { return /^image\/(png|jpe?g|webp|gif)$/.test(f.type); });
+    files.slice(0, 6 - (state.draftImages || []).length).forEach(function (file) {
+      var item = { url: '', name: file.name, size: file.size, mime: file.type, uploading: true, localUrl: URL.createObjectURL(file) };
+      state.draftImages.push(item); renderDraftImages();
+      var fd = new FormData(); fd.append('file', file, file.name || 'pasted.png');
+      fetch(API + '/annotation-images', { method: 'POST', body: fd }).then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })
+        .then(function (d) { item.url = d.url; item.name = d.name; item.size = d.size; item.mime = d.mime; item.uploading = false; renderDraftImages(); })
+        .catch(function (e) { var i2 = state.draftImages.indexOf(item); if (i2 >= 0) state.draftImages.splice(i2, 1); renderDraftImages(); toast('图片上传失败：' + e.message, 'error'); });
+    });
+  }
+  (function () {
+    var drop = $('pf-draft-drop'), fileInput = $('pf-draft-file');
+    drop.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () { addDraftFiles(fileInput.files); fileInput.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('dragover'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('dragover'); }); });
+    drop.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addDraftFiles(e.dataTransfer.files); });
+    // 粘贴：抽屉打开时全局监听，取剪贴板里的图片
+    document.addEventListener('paste', function (e) {
+      if ($('pf-draft-mask').classList.contains('hidden')) return;
+      var items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      var files = [];
+      for (var i = 0; i < items.length; i++) { if (items[i].kind === 'file' && /^image\//.test(items[i].type)) files.push(items[i].getAsFile()); }
+      if (files.length) { e.preventDefault(); addDraftFiles(files); }
+    });
+  })();
+
+  $('pf-draft-submit').onclick = function () {
+    var content = $('pf-draft-content').value.trim();
+    var author = $('pf-draft-author').value.trim();
+    if (!content) { toast('先写意见内容', 'error'); return; }
+    var imgs = (state.draftImages || []).filter(function (im) { return im.url && !im.uploading; });
+    if ((state.draftImages || []).some(function (im) { return im.uploading; })) { toast('图片还在上传，稍等', 'error'); return; }
+    var d = state.draft;
+    apiPost(API + '/annotations', {
+      pageId: d.pageId, pageTitle: d.pageTitle, targetKind: d.kind, targetLabel: d.label,
+      targetPath: d.path || '',
+      content: content, author: author, images: imgs.map(function (im) { return { url: im.url, name: im.name, size: im.size, mime: im.mime }; }),
+    }).then(function () {
+      localStorage.setItem('pf-annot-author', author);
+      $('pf-draft-mask').classList.add('hidden');
+      toast('意见已提交');
+      loadAnnotations().then(renderAnnotBadges);
+    }).catch(function (e) { toast('提交失败：' + e.message, 'error'); });
+  };
+
+  function loadAnnotations() {
+    return apiGet(API + '/annotations').then(function (d) {
+      state.annotations = d.annotations || [];
+      renderAnnots();
+    }).catch(function () {});
+  }
+  function renderAnnots() {
+    var list = $('pf-annot-list');
+    list.innerHTML = '';
+    var open = state.annotations.filter(function (a) { return a.status === 'open'; });
+    var done = state.annotations.filter(function (a) { return a.status !== 'open'; });
+    $('pf-annot-count').textContent = '（' + open.length + ' 待处理 / ' + done.length + ' 已解决）';
+    $('pf-open-count').textContent = String(open.length);
+    var lc = $('pf-annot-list-count'); if (lc) lc.textContent = open.length ? '(' + open.length + ')' : '';
+    var needsReq = open.filter(function (a) { return a.needs_req; });
+    $('pf-annot-banner').classList.toggle('hidden', !needsReq.length);
+    if (needsReq.length) $('pf-annot-banner-text').textContent = needsReq.length + ' 条意见涉及业务规则，原型已改、待同步需求文档';
+
+    function card(a) {
+      var kindName = { field: '字段', action: '按钮', icon: '图标', section: '区块', page: '整页', element: '元素' }[a.target_kind] || '元素';
+      var cardEl = el('div', 'pf-annot-card ' + (a.status === 'open' ? 'is-open' : ''));
+      // 标签为空或与种类同名（存量「元素：元素」）时不重复拼接
+      var targetDesc = kindName + (a.target_label && a.target_label !== kindName ? '：' + a.target_label : '');
+      cardEl.appendChild(el('div', 'pf-annot-meta',
+        '「' + (a.page_title || '') + '」' + targetDesc +
+        (a.needs_req ? ' <span class="pf-annot-needs">· 待同步需求</span>' : '')));
+      var contentEl = el('div', 'pf-annot-content', a.content);
+      cardEl.appendChild(contentEl);
+      // 附图缩略图（点击新窗看大图）
+      var imgs = [];
+      try { imgs = typeof a.images === 'string' ? JSON.parse(a.images || '[]') : (a.images || []); } catch (e) { imgs = []; }
+      if (imgs.length) {
+        var imgWrap = el('div', 'pf-img-thumbs mt-2');
+        imgWrap.classList.remove('hidden');
+        imgs.forEach(function (im) {
+          var t = el('div', 'pf-img-thumb');
+          var imEl = document.createElement('img'); imEl.src = im.url; imEl.title = im.name || '';
+          imEl.style.cursor = 'zoom-in';
+          imEl.onclick = function () { window.open(im.url, '_blank'); };
+          t.appendChild(imEl); imgWrap.appendChild(t);
+        });
+        cardEl.appendChild(imgWrap);
+      }
+      cardEl.appendChild(el('div', 'pf-annot-time', (a.author || '匿名') + ' · ' + (a.created_at || '').slice(0, 16).replace('T', ' ')));
+      var actions = el('div', 'flex gap-2 mt-2 flex-wrap');
+
+      // 就地编辑意见文字（不动圈选定位）
+      var editBtn = el('button', 'pf-btn', '编辑');
+      editBtn.style.height = '28px'; editBtn.style.fontSize = '12px'; editBtn.style.padding = '0 10px';
+      editBtn.onclick = function () {
+        if (cardEl.querySelector('.pf-edit-ta')) return;
+        var ta = el('textarea', 'pf-input w-full px-3 py-2 text-[13px] pf-edit-ta');
+        ta.style.height = 'auto'; ta.rows = 3; ta.value = a.content;
+        contentEl.style.display = 'none';
+        contentEl.parentNode.insertBefore(ta, contentEl);
+        editBtn.style.display = 'none';
+        ta.focus();
+        var saveBtn = el('button', 'pf-btn primary', '保存');
+        saveBtn.style.height = '28px'; saveBtn.style.fontSize = '12px'; saveBtn.style.padding = '0 10px';
+        var cancelBtn = el('button', 'pf-btn', '取消');
+        cancelBtn.style.height = '28px'; cancelBtn.style.fontSize = '12px'; cancelBtn.style.padding = '0 10px';
+        actions.insertBefore(saveBtn, editBtn);
+        actions.insertBefore(cancelBtn, editBtn);
+        function restore() { ta.remove(); saveBtn.remove(); cancelBtn.remove(); contentEl.style.display = ''; editBtn.style.display = ''; }
+        cancelBtn.onclick = restore;
+        saveBtn.onclick = function () {
+          var v = ta.value.trim();
+          if (!v) { toast('意见内容不能为空', 'error'); return; }
+          saveBtn.disabled = true;
+          apiPatch('/api/annotations/' + a.id, { content: v }).then(function () { toast('已保存', 'success'); loadAnnotations(); })
+            .catch(function (e) { toast(e.message || '保存失败', 'error'); saveBtn.disabled = false; });
+        };
+      };
+      actions.appendChild(editBtn);
+      if (a.status === 'open') {
+        var applyBtn = el('button', 'pf-btn primary', '应用到原型');
+        applyBtn.style.height = '28px'; applyBtn.style.fontSize = '12px'; applyBtn.style.padding = '0 10px';
+        applyBtn.onclick = function () { doPatch([a.id]); };
+        actions.appendChild(applyBtn);
+        var resBtn = el('button', 'pf-btn', '标记解决');
+        resBtn.style.height = '28px'; resBtn.style.fontSize = '12px'; resBtn.style.padding = '0 10px';
+        resBtn.onclick = function () { apiPost('/api/annotations/' + a.id + '/resolve').then(loadAnnotations); };
+        actions.appendChild(resBtn);
+      } else {
+        var reopenBtn = el('button', 'pf-btn', '重新打开');
+        reopenBtn.style.height = '28px'; reopenBtn.style.fontSize = '12px'; reopenBtn.style.padding = '0 10px';
+        reopenBtn.onclick = function () { apiPost('/api/annotations/' + a.id + '/reopen').then(loadAnnotations); };
+        actions.appendChild(reopenBtn);
+      }
+      var delBtn = el('button', 'pf-btn pf-btn-danger-ghost', '删除');
+      delBtn.style.height = '28px'; delBtn.style.fontSize = '12px'; delBtn.style.padding = '0 10px';
+      delBtn.onclick = function () { apiDel('/api/annotations/' + a.id).then(loadAnnotations).catch(function () {}); };
+      actions.appendChild(delBtn);
+      cardEl.appendChild(actions);
+      return cardEl;
+    }
+    open.forEach(function (a) { list.appendChild(card(a)); });
+    if (open.length && done.length) {
+      var sep = el('div', 'text-[11px] text-center pt-2', '—— 已解决 ——');
+      sep.style.color = 'var(--pf-text-3)';
+      list.appendChild(sep);
+    }
+    done.forEach(function (a) { list.appendChild(card(a)); });
+    if (!state.annotations.length) list.appendChild(el('div', 'text-center text-[13px] py-10', '还没有意见。开启标注模式，点页面上的元素贴意见。'));
+  }
+  $('pf-annot-close').onclick = function () { $('pf-annot-mask').classList.add('hidden'); };
+  $('pf-req-close').onclick = function () { $('pf-req-mask').classList.add('hidden'); };
+  $('pf-delpage-x').onclick = closeDelPage;
+  $('pf-delpage-cancel').onclick = closeDelPage;
+  $('pf-delpage-ok').onclick = doDeletePage;
+  $('pf-delpage-mask').addEventListener('click', function (ev) { if (ev.target === this) closeDelPage(); });
+  $('pf-patchresult-ok').onclick = closePatchResult;
+  $('pf-patchresult-mask').addEventListener('click', function (ev) { if (ev.target === this) closePatchResult(); });
+  $('pf-btn-del-page').onclick = function () {
+    var p = pageById(state.currentPage);
+    if (p) askDeletePage(p.id, p.title);
+  };
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !$('pf-delpage-mask').classList.contains('hidden')) closeDelPage(); });
+  $('pf-btn-req').onclick = function () { $('pf-req-mask').classList.remove('hidden'); renderReqDrawer(); };
+  if (!OFFLINE) {
+    var fb = el('button', 'pf-btn w-full', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>评审意见');
+    fb.style.height = '36px';
+    fb.onclick = function () { loadAnnotations().then(function () { $('pf-annot-mask').classList.remove('hidden'); }); };
+    $('pf-side-footer').appendChild(fb);
+  }
+  // 顶栏「评审意见」按钮（沉浸态侧栏隐藏后的意见列表入口）
+  $('pf-btn-annot-list').onclick = function () { openAnnotDrawer(); };
+
+  function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function openPatchResult(d) {
+    var pages = (d.changedPages || []).map(function (p) { return escHtml(p); });
+    var items = Array.isArray(d.appliedItems) ? d.appliedItems : [];
+    var rows = items.map(function (it) {
+      var target = it.targetLabel ? '<span class="pf-pr-target">' + escHtml(it.targetLabel) + '</span>' : '';
+      var badge;
+      if (it.applied === false) badge = '<em class="pf-pr-needreq" style="color:var(--pf-danger,#dc2626)">未生效</em>';
+      else if (it.needsReq) badge = '<em class="pf-pr-needreq">待同步需求</em>';
+      else badge = '<em class="pf-pr-needreq" style="color:var(--pf-success,#16a34a)">已改</em>';
+      var line = '<li' + (it.applied === false ? ' style="opacity:.85"' : '') + '><div class="pf-pr-line"><span class="pf-pr-page">' + escHtml(it.pageTitle) + '</span>' + target + badge + '</div>' +
+        '<div class="pf-pr-content">' + escHtml(it.content) + '</div>';
+      if (it.applied === false && it.reason) line += '<div style="color:var(--pf-danger,#dc2626);font-size:12px;margin-top:2px">原因：' + escHtml(it.reason) + '</div>';
+      return line + '</li>';
+    }).join('');
+    var failed = items.filter(function (it) { return it.applied === false; });
+    var okCount = items.length - failed.length;
+    var html = '';
+    if (d.dataChanged) html += '<div class="pf-pr-pages">已更新 <strong>' + d.dataChanged + '</strong> 个数据集（看板数字/图表自动联动）</div>';
+    if (pages.length) html += '<div class="pf-pr-pages">已重写页面：<strong>' + pages.join('、') + '</strong></div>';
+    html += '<ul class="pf-pr-list">' + rows + '</ul>';
+    if (failed.length) {
+      html += '<div class="pf-pr-tip" style="color:var(--pf-danger,#dc2626)">有 <strong>' + failed.length + '</strong> 条意见没能改，已保留为待处理（见上方“未生效”与原因），改下说法或补具体数字后可再点应用。';
+    } else {
+      html += '<div class="pf-pr-tip">页面已自动刷新，请核对上面 ' + okCount + ' 条意见的改动；不对可重新贴意见再应用。';
+    }
+    if (d.needsReqCount) html += '其中 <strong>' + d.needsReqCount + '</strong> 条涉及业务规则，记得点「同步到需求」。';
+    html += '</div>';
+    $('pf-patchresult-body').innerHTML = html;
+    $('pf-patchresult-mask').classList.remove('hidden');
+  }
+  function closePatchResult() { $('pf-patchresult-mask').classList.add('hidden'); }
+
+  function doPatch(ids) {
+    if (state.busy) return;
+    state.busy = true;
+    setApplyBusy(true);
+    toast('AI 正在按意见改原型，整页重写约需 30~60 秒，完成后自动刷新…', 'info', true);
+    apiPost(API + '/prototype/patch', ids && ids.length ? { annotationIds: ids } : {})
+      .then(function (d) {
+        return reloadSpec().then(function () {
+          return loadAnnotations().then(function () {
+            toast('原型已更新，请核对改动');
+            openPatchResult(d);
+          });
+        });
+      })
+      .catch(function (e) { toast('修改失败（原型未改动）：' + e.message, 'error', true); })
+      .finally(function () { state.busy = false; setApplyBusy(false); });
+  }
+  $('pf-btn-apply-all').onclick = function () { doPatch([]); };
+  $('pf-btn-sync-req').onclick = function () {
+    if (state.busy) return;
+    state.busy = true;
+    var b = $('pf-btn-sync-req');
+    var old = b.textContent;
+    b.disabled = true; b.classList.add('opacity-60', 'cursor-wait');
+    b.textContent = 'AI 同步中…';
+    toast('AI 正在把意见同步进需求文档，约 30 秒…', 'info', true);
+    apiPost(API + '/annotations/sync-requirements', {})
+      .then(function (d) {
+        var msg = '需求文档已同步';
+        if (d.revised && d.revised.length) msg += '，修订：' + d.revised.map(function (r) { return r.title; }).join('、');
+        if (d.created && d.created.length) msg += '，新建：' + d.created.map(function (r) { return r.title; }).join('、');
+        toast(msg + '（已打回待确认）');
+        return loadAnnotations();
+      })
+      .catch(function (e) { toast('同步失败：' + e.message, 'error'); })
+      .finally(function () { state.busy = false; b.disabled = false; b.classList.remove('opacity-60', 'cursor-wait'); b.textContent = old; });
+  };
+
+  // ---------- 需求抽屉 ----------
+  function renderReqDrawer() {
+    var index = $('pf-req-index');
+    var body = $('pf-req-body');
+    var reqs = (state.spec && state.spec.requirements) || [];
+    index.innerHTML = '';
+    if (!reqs.length) {
+      index.appendChild(el('div', 'text-[12px] p-2', '暂无关联需求'));
+      index.firstChild.style.color = 'var(--pf-text-3)';
+      body.innerHTML = '';
+      return;
+    }
+    var cur = pageById(state.currentPage);
+    var curIds = {};
+    if (cur) {
+      if (cur.requirementId) curIds[cur.requirementId] = 1;
+      (state.spec.nav || []).forEach(function (n) { if (n.pageId === cur.id && n.requirementId) curIds[n.requirementId] = 1; });
+    }
+    var ordered = reqs.slice().sort(function (a, b) { return (curIds[b.id] ? 1 : 0) - (curIds[a.id] ? 1 : 0); });
+    ordered.forEach(function (r, i) {
+      var b = el('button', 'pf-req-index-btn' + (i === 0 ? ' active' : ''), r.title + (curIds[r.id] ? ' ●' : ''));
+      b.onclick = function () {
+        body.innerHTML = '<div class="pf-md">' + mdToHtml(r.docMd) + '</div>';
+        index.querySelectorAll('button').forEach(function (x) { x.className = 'pf-req-index-btn'; });
+        b.className = 'pf-req-index-btn active';
+      };
+      index.appendChild(b);
+    });
+    body.innerHTML = '<div class="pf-md">' + mdToHtml(ordered[0].docMd) + '</div>';
+  }
+
+  // ---------- 载入 ----------
+  function showState(iconHtml, title, desc, danger) {
+    var box = $('pf-state');
+    var ic = $('pf-state-icon');
+    ic.innerHTML = iconHtml;
+    ic.classList.toggle('danger', !!danger);
+    $('pf-state-title').textContent = title;
+    $('pf-state-desc').innerHTML = desc || '';
+    box.classList.remove('hidden'); box.classList.add('flex');
+    $('pf-btn-export').classList.add('hidden');
+    $('pf-page-root').innerHTML = '';
+    $('pf-page-title').textContent = '';
+  }
+  function hideState() {
+    $('pf-state').classList.add('hidden'); $('pf-state').classList.remove('flex');
+  }
+
+  function reloadSpec() {
+    if (OFFLINE) return Promise.resolve();
+    return apiGet(API + '/prototype').then(function (d) {
+      state.status = d.status;
+      if (d.status === 'error' && d.error) toast(d.error, 'error');
+      var prevPageStatus = state.spec ? state.spec.pageStatus : null;
+      var prevPageHtml = state.spec && state.currentPage
+        ? ((state.spec.pages || []).find(function (p) { return p.id === state.currentPage; }) || {}).html : null;
+      schedulePoll(d.status === 'generating');
+      if (d.status === 'empty') {
+        showState('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>', '还没有原型', '回到平台「原型」面板，点「基于需求清单生成原型」，<br>AI 会读需求文档生成一个可点击的原型网站。');
+        return;
+      }
+      if (d.status === 'error' && !d.spec) {
+        showState('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>', '生成失败', (d.error || '未知错误').replace(/</g, '&lt;'), true);
+        return;
+      }
+      if (d.spec) {
+        hideState();
+        applySpec(d.spec);
+      }
+      if (d.status === 'generating' && (!d.spec || !(d.spec.pages || []).length)) {
+        showState('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>', 'AI 正在规划原型…', '骨架出来后导航和页面会逐页长出来，约 1~3 分钟。');
+        return;
+      }
+      if (!state.currentPage) {
+        var h0 = parseHash();
+        var first = h0 && pageById(h0.pageId) ? h0.pageId
+          : ((d.spec.nav && d.spec.nav[0] && d.spec.nav[0].pageId) || (d.spec.pages && d.spec.pages[0] && d.spec.pages[0].id));
+        if (first) go(first, h0 && first === h0.pageId ? h0.params : {});
+      } else {
+        // 当前页刚生成完，或 patch 后页面代码变了 → 重新加载
+        var wasPending = prevPageStatus && prevPageStatus[state.currentPage] !== 'ready';
+        var nowReady = (d.spec.pageStatus || {})[state.currentPage] === 'ready';
+        var newPageHtml = ((d.spec.pages || []).find(function (p) { return p.id === state.currentPage; }) || {}).html;
+        if ((wasPending && nowReady) || newPageHtml !== prevPageHtml) loadPage();
+      }
+    });
+  }
+  function schedulePoll(on) {
+    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    if (on && !OFFLINE) state.pollTimer = setTimeout(function () { reloadSpec(); }, 3000);
+  }
+
+  if (!OFFLINE) {
+    $('pf-btn-export').classList.remove('hidden');
+    $('pf-btn-export').onclick = function () { window.open(API + '/prototype/export', '_blank'); };
+    reloadSpec().catch(function (e) { toast('加载失败：' + e.message, 'error'); });
+    loadAnnotations();
+  } else {
+    applySpec(window.__PF_SPEC__);
+    var h = parseHash();
+    var first = h ? h.pageId : ((state.spec.nav[0] && state.spec.nav[0].pageId) || state.spec.pages[0].id);
+    go(first, h ? h.params : {});
+  }
+})();
+</script>
+</body>
+</html>

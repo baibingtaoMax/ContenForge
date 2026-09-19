@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "ProtoForge 站外标注",
+  "version": "0.1.0",
+  "description": "在任意真实网页上圈选贴评审意见，回传到本地 ProtoForge。",
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": ["http://localhost:3100/*", "http://127.0.0.1:3100/*", "http://192.168.108.125:2461/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ProtoForge 站外标注"
+  },
+  "icons": {}
+}
