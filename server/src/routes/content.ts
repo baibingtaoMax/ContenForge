@@ -232,6 +232,93 @@ export async function contentRoutes(app: FastifyInstance) {
     return result;
   });
 
+  // 公众号成品排版：结构化稿件 → 橄榄手记 HTML，存进 wechat 版本 extra.layoutHtml
+  app.post<{ Params: { aid: string } }>(
+    '/api/articles/:aid/gzh-layout',
+    async (request, reply) => {
+      const a = getArticle(request.params.aid);
+      if (!a) return reply.status(404).send({ error: '文章不存在' });
+      const body = (request.body || {}) as { doc?: unknown };
+      if (!body.doc || typeof body.doc !== 'object') {
+        return reply.status(400).send({ error: '缺少 doc（结构化稿件）' });
+      }
+      const { renderGzh } = await import('../services/gzh/renderer.js');
+      const { validateLayoutHtml } = await import('../services/gzh/validate.js');
+      const layoutHtml = renderGzh(body.doc as any);
+      const { errors, leafCount } = validateLayoutHtml(layoutHtml);
+      if (errors.length) return reply.status(500).send({ error: '排版未通过内建校验', errors });
+      const existing = listChannelVersions(a.id).find((v) => v.channel === 'wechat');
+      let extra: Record<string, unknown> = {};
+      try { extra = JSON.parse(existing?.extra_json || '{}'); } catch { extra = {}; }
+      extra.layoutHtml = layoutHtml;
+      upsertChannelVersion(a.id, 'wechat', {
+        title: existing?.title || a.title,
+        content: existing?.content || '',
+        extra,
+      });
+      return { ok: true, leafCount, length: layoutHtml.length };
+    }
+  );
+
+  // 公众号 AI 一键排版：读主稿 → LLM 调组件工具 → 成品存 extra.layoutHtml
+  app.post<{ Params: { aid: string } }>(
+    '/api/articles/:aid/auto-layout',
+    async (request, reply) => {
+      const a = getArticle(request.params.aid);
+      if (!a) return reply.status(404).send({ error: '文章不存在' });
+      const { autoLayoutGzh } = await import('../services/gzh/autoLayout.js');
+      const r = await autoLayoutGzh({ docMd: a.doc_md || '', title: a.title });
+      if (!r.ok || !r.html) return reply.status(500).send(r);
+      const existing = listChannelVersions(a.id).find((v) => v.channel === 'wechat');
+      let extra: Record<string, unknown> = {};
+      try { extra = JSON.parse(existing?.extra_json || '{}'); } catch { extra = {}; }
+      extra.layoutHtml = r.html;
+      upsertChannelVersion(a.id, 'wechat', {
+        title: existing?.title || a.title,
+        content: existing?.content || '',
+        extra,
+      });
+      return { ok: true, leafCount: r.leafCount, componentCount: r.componentCount };
+    }
+  );
+
+  // 公众号成品推送到草稿箱：multipart（cover 文件）+ JSON 字段（title/author/digest）
+  app.post<{ Params: { aid: string } }>(
+    '/api/articles/:aid/push-draft',
+    async (request, reply) => {
+      const a = getArticle(request.params.aid);
+      if (!a) return reply.status(404).send({ error: '文章不存在' });
+      const parts = request.parts();
+      let meta: { title?: string; author?: string; digest?: string; contentSourceUrl?: string } = {};
+      let cover: { filename: string; contentType: string; data: Buffer } | null = null;
+      for await (const p of parts) {
+        if (p.type === 'file') {
+          const chunks: Buffer[] = [];
+          for await (const c of p.file) chunks.push(c as Buffer);
+          cover = { filename: p.filename || 'cover.jpg', contentType: p.mimetype || 'image/jpeg', data: Buffer.concat(chunks) };
+        } else if (p.fieldname === 'meta') {
+          try { meta = JSON.parse(p.value as string); } catch { /* ignore */ }
+        }
+      }
+      if (!cover) return reply.status(400).send({ error: '缺少封面文件 cover' });
+      const v = listChannelVersions(a.id).find((x) => x.channel === 'wechat');
+      let layoutHtml = '';
+      try { layoutHtml = JSON.parse(v?.extra_json || '{}').layoutHtml || ''; } catch { /* ignore */ }
+      if (!layoutHtml) return reply.status(400).send({ error: '尚无排版成品，先排版再推送' });
+      const { pushDraft } = await import('../services/wxmp/draft.js');
+      const result = await pushDraft({
+        title: meta.title || v?.title || a.title,
+        author: meta.author,
+        digest: meta.digest,
+        content: layoutHtml,
+        contentSourceUrl: meta.contentSourceUrl,
+        cover,
+      });
+      if (!result.ok) return reply.status(502).send(result);
+      return result;
+    }
+  );
+
   // ---------- 发布记录 ----------
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/publishes',

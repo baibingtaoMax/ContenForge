@@ -569,3 +569,31 @@ export const adaptArticle = (
   payload: { channels?: ChannelKey[]; requirement?: string }
 ): Promise<{ ok: boolean; channels: ChannelKey[]; error?: string }> =>
   api.post(`/articles/${aid}/adapt`, payload, { timeout: 300000 }).then((r) => r.data)
+
+// ContentForge：公众号成品排版（结构化稿件 → 橄榄手记 HTML）
+export const layoutGzh = (
+  aid: string,
+  doc: unknown
+): Promise<{ ok: boolean; leafCount: number; length: number; error?: string; errors?: string[] }> =>
+  api.post(`/articles/${aid}/gzh-layout`, { doc }).then((r) => r.data)
+
+// ContentForge：AI 一键排版（模型调组件工具，多轮，给足 300s）
+export const autoLayoutGzhApi = (
+  aid: string
+): Promise<{ ok: boolean; leafCount?: number; componentCount?: number; error?: string }> =>
+  api.post(`/articles/${aid}/auto-layout`, {}, { timeout: 300000 }).then((r) => r.data)
+
+// ContentForge：成品推送到公众号草稿箱（multipart：cover + meta）
+export const pushWxmpDraft = (
+  aid: string,
+  cover: File,
+  meta: { title?: string; author?: string; digest?: string }
+): Promise<{ ok: boolean; mediaId?: string; error?: string }> => {
+  const fd = new FormData()
+  fd.append('cover', cover)
+  fd.append('meta', JSON.stringify(meta))
+  return api.post(`/articles/${aid}/push-draft`, fd, {
+    headers: { 'content-type': 'multipart/form-data' },
+    timeout: 120000,
+  }).then((r) => r.data)
+}

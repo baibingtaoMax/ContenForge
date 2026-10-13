@@ -2,18 +2,35 @@
   <div class="cv-pane">
     <div class="cv-toolbar">
       <el-input v-model="title" size="small" class="cv-title-input" placeholder="该渠道版本标题" />
+      <el-radio-group v-if="channel === 'wechat' && layoutHtml" v-model="wechatMode" size="small">
+        <el-radio-button label="layout">成品预览</el-radio-button>
+        <el-radio-button label="source">源文</el-radio-button>
+      </el-radio-group>
       <el-button v-if="channel === 'wechat'" size="small" type="primary" @click="copyRich">
-        <AppIcon name="copy" :size="13" /> 一键复制富文本
+        <AppIcon name="copy" :size="13" /> {{ wechatMode === 'layout' ? '复制成品' : '一键复制富文本' }}
       </el-button>
       <el-button v-else size="small" type="primary" @click="copyPlain">
         <AppIcon name="copy" :size="13" /> 一键复制
       </el-button>
       <el-button size="small" :loading="saving" @click="save">保存</el-button>
+      <el-upload
+        v-if="channel === 'wechat' && layoutHtml"
+        :show-file-list="false"
+        :before-upload="beforePushCover"
+        accept="image/*"
+      >
+        <el-button size="small" type="success" :loading="pushing">
+          <AppIcon name="copy" :size="13" /> 推送到草稿箱
+        </el-button>
+      </el-upload>
       <el-button size="small" @click="openAdapt">
         <AppIcon name="sparkle" :size="13" /> {{ hasVersion ? '重新 AI 生成' : 'AI 生成' }}
       </el-button>
+      <el-button v-if="channel === 'wechat'" size="small" type="warning" :loading="autoLayouting" @click="runAutoLayout">
+        <AppIcon name="sparkle" :size="13" /> AI 一键排版
+      </el-button>
     </div>
-    <div v-if="channel === 'wechat'" class="cv-hint">粘贴到公众号后台编辑器会保留标题层级、加粗、引用等排版。</div>
+    <div v-if="channel === 'wechat'" class="cv-hint">{{ wechatMode === 'layout' ? '成品为橄榄手记排版，复制后直接粘贴公众号后台即可。' : '粘贴到公众号后台编辑器会保留标题层级、加粗、引用等排版。' }}</div>
     <div v-else-if="channel === 'xhs'" class="cv-hint">纯文本直接粘贴小红书；标题候选/话题标签/封面文案在下方。</div>
     <div v-else class="cv-hint">Markdown 源码，掘金/知乎编辑器可直接粘贴。</div>
 
@@ -38,7 +55,13 @@
       </div>
     </div>
 
+    <!-- 公众号成品预览 -->
+    <div v-if="channel === 'wechat' && wechatMode === 'layout' && layoutHtml" class="cv-layout">
+      <iframe class="cv-layout-frame" :srcdoc="layoutDoc" title="成品预览"></iframe>
+    </div>
+
     <el-input
+      v-else
       v-model="content"
       type="textarea"
       :autosize="{ minRows: 14, maxRows: 30 }"
@@ -52,7 +75,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppIcon from './AppIcon.vue'
-import { listChannelVersions, saveChannelVersion, adaptArticle } from '@/api'
+import { listChannelVersions, saveChannelVersion, adaptArticle, pushWxmpDraft, autoLayoutGzhApi } from '@/api'
 import { renderMarkdown } from '@/utils/markdown'
 import type { ChannelKey } from '@/types'
 
@@ -64,6 +87,16 @@ const content = ref('')
 const extra = ref<Record<string, any>>({})
 const saving = ref(false)
 const adapting = ref(false)
+const pushing = ref(false)
+const autoLayouting = ref(false)
+const wechatMode = ref<'layout' | 'source'>('layout')
+
+const layoutHtml = computed(() =>
+  props.channel === 'wechat' && typeof extra.value.layoutHtml === 'string' ? extra.value.layoutHtml : ''
+)
+const layoutDoc = computed(() =>
+  `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#f3f2ec;}</style></head><body>${layoutHtml.value}</body></html>`
+)
 
 const hasVersion = computed(() => !!content.value.trim())
 const xhsExtra = computed(() => props.channel === 'xhs' ? extra.value : null)
@@ -85,6 +118,40 @@ async function load() {
 onMounted(load)
 watch(() => props.articleId, load)
 watch(() => props.adaptNonce, (n) => { if (n > 0) load() })
+
+async function runAutoLayout() {
+  autoLayouting.value = true
+  ElMessage.info('AI 正在逐件装配排版，主稿越长越慢…')
+  try {
+    const r = await autoLayoutGzhApi(props.articleId)
+    if (r.ok) {
+      await load()
+      wechatMode.value = 'layout'
+      ElMessage.success(`排版完成（${r.componentCount} 个组件，${r.leafCount} 处包裹），检查后可推草稿`)
+    } else {
+      ElMessage.error(r.error || 'AI 排版失败，可重试')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || 'AI 排版失败，可重试')
+  } finally {
+    autoLayouting.value = false
+  }
+}
+
+async function beforePushCover(file: File) {
+  pushing.value = true
+  ElMessage.info('正在上传封面并推送草稿…')
+  try {
+    const r = await pushWxmpDraft(props.articleId, file, { title: title.value })
+    if (r.ok) ElMessage.success(`已推入公众号草稿箱（mediaId: ${r.mediaId}）`)
+    else ElMessage.error(r.error || '推送失败')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '推送失败')
+  } finally {
+    pushing.value = false
+  }
+  return false // 阻止 el-upload 自动上传
+}
 
 async function save() {
   saving.value = true
@@ -123,18 +190,19 @@ async function copyTags() {
 }
 
 async function copyRich() {
-  const html = renderMarkdown(content.value)
+  const richHtml = layoutHtml.value || renderMarkdown(content.value)
+  const plain = content.value
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([content.value], { type: 'text/plain' }),
+        'text/html': new Blob([richHtml], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
       }),
     ])
-    ElMessage.success('富文本已复制，粘贴到公众号编辑器即可')
+    ElMessage.success(layoutHtml.value ? '成品已复制，粘贴到公众号编辑器即可' : '富文本已复制，粘贴到公众号编辑器即可')
   } catch {
-    await navigator.clipboard.writeText(content.value)
-    ElMessage.success('浏览器不支持富文本复制，已复制 Markdown 源文')
+    await navigator.clipboard.writeText(plain)
+    ElMessage.success('浏览器不支持富文本复制，已复制源文')
   }
 }
 </script>
@@ -144,6 +212,8 @@ async function copyRich() {
 .cv-toolbar { display: flex; gap: 8px; align-items: center; }
 .cv-title-input { max-width: 320px; }
 .cv-hint { font-size: 12px; color: var(--pf-text-3); }
+.cv-layout { border: 1px solid var(--pf-border); border-radius: var(--pf-r-md); overflow: hidden; }
+.cv-layout-frame { width: 100%; height: 640px; border: 0; display: block; background: #f3f2ec; }
 .xhs-extra {
   display: flex; flex-direction: column; gap: 10px;
   background: var(--pf-primary-50); border: 1px solid var(--pf-border);
