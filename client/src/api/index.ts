@@ -577,11 +577,12 @@ export const layoutGzh = (
 ): Promise<{ ok: boolean; leafCount: number; length: number; error?: string; errors?: string[] }> =>
   api.post(`/articles/${aid}/gzh-layout`, { doc }).then((r) => r.data)
 
-// ContentForge：AI 一键排版（模型调组件工具，多轮，给足 300s）
+// ContentForge：AI 一键排版（模型调组件工具，多轮 tool-calling，实测 7-9 分钟，
+// 零组件自动重试最坏约 18 分钟，给 20 分钟）
 export const autoLayoutGzhApi = (
   aid: string
 ): Promise<{ ok: boolean; leafCount?: number; componentCount?: number; error?: string }> =>
-  api.post(`/articles/${aid}/auto-layout`, {}, { timeout: 300000 }).then((r) => r.data)
+  api.post(`/articles/${aid}/auto-layout`, {}, { timeout: 1_200_000 }).then((r) => r.data)
 
 // ContentForge：成品推送到公众号草稿箱（multipart：cover + meta）
 export const pushWxmpDraft = (

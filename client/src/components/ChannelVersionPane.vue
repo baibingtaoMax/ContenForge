@@ -121,7 +121,7 @@ watch(() => props.adaptNonce, (n) => { if (n > 0) load() })
 
 async function runAutoLayout() {
   autoLayouting.value = true
-  ElMessage.info('AI 正在逐件装配排版，主稿越长越慢…')
+  ElMessage.info('AI 正在逐件装配排版，约 7-9 分钟，主稿越长越慢，可先处理别的事…')
   try {
     const r = await autoLayoutGzhApi(props.articleId)
     if (r.ok) {
