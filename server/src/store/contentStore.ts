@@ -302,11 +302,37 @@ export function updateArticle(
     fields.push('sort_order=?');
     values.push(patch.sortOrder);
   }
+  const before = getArticle(id);
   fields.push('updated_at=?');
   values.push(new Date().toISOString());
   values.push(id);
   getDb().prepare(`UPDATE cf_articles SET ${fields.join(', ')} WHERE id=?`).run(...(values as any[]));
-  return getArticle(id);
+  const after = getArticle(id);
+
+  // 联动发布台账：文章状态首次变为「已发」、且还没有任何发布记录时，自动补一条占位台账。
+  // 去重——已在发布台账登记过（含手动登记/多渠道），或重复保存为已发，都不会重复建。
+  if (patch.status && after) {
+    const pubs = listPublishesByArticle(id);
+    if (patch.status === 'published' && before && before.status !== 'published' && pubs.length === 0) {
+      createPublish({
+        articleId: id,
+        projectId: after.project_id,
+        channel: 'wechat',
+        note: '标记「已发」自动登记，可补链接与数据',
+      });
+    } else if (patch.status !== 'published' && before && before.status === 'published') {
+      // 误点撤回：只清掉那条「自动占位」（无链接、无数据、备注为自动生成），手动登记的真实记录不动。
+      for (const p of pubs) {
+        let emptyMetrics = true;
+        try { emptyMetrics = Object.keys(JSON.parse(p.metrics_json || '{}')).length === 0; } catch { /* ignore */ }
+        const isAutoPlaceholder =
+          !p.url && emptyMetrics && (p.note || '').includes('标记「已发」自动登记');
+        if (isAutoPlaceholder) deletePublish(p.id);
+      }
+    }
+  }
+
+  return after;
 }
 
 export function deleteArticle(id: string): void {

@@ -31,6 +31,7 @@ import {
   ensureSeries,
   createSeries,
   listSeries,
+  getSeries,
   createArticle,
   batchCreateArticles,
   listArticles,
@@ -147,6 +148,31 @@ function buildProjectContext(projectId: string): string {
 }
 
 /** 构造内容台账上下文（系列+文章现状，防重复沉淀、回答进度问题） */
+// 拼某篇文章的发布台账后缀（渠道 + 阅读/赞/评/藏/转 + 链接），供 list_content 带出，
+// 让顾问复盘数据时不必再让运营者手动报数。
+const PUBLISH_CH_LABEL: Record<string, string> = { wechat: '公众号', xhs: '小红书', markdown: '掘金/知乎' };
+function publishSuffix(articleId: string): string {
+  const pubs = listPublishesByArticle(articleId);
+  if (!pubs.length) return '';
+  const parts = pubs.map((p) => {
+    let m: Record<string, number> = {};
+    try { m = JSON.parse(p.metrics_json || '{}'); } catch { m = {}; }
+    const metrics = [
+      m.views != null ? `阅读${m.views}` : '',
+      m.likes != null ? `赞${m.likes}` : '',
+      m.comments != null ? `评${m.comments}` : '',
+      m.collects != null ? `藏${m.collects}` : '',
+      m.shares != null ? `转${m.shares}` : '',
+    ].filter(Boolean).join('/');
+    const segs = [PUBLISH_CH_LABEL[p.channel] || p.channel];
+    if (metrics) segs.push(metrics);
+    if (p.url) segs.push(`链接${p.url}`);
+    if (p.note) segs.push(`备注:${p.note}`);
+    return segs.join(' ');
+  });
+  return `，发布数据：${parts.join('；')}`;
+}
+
 function buildContentListSystem(projectId: string): string {
   const series = listSeries(projectId);
   const articles = listArticles(projectId);
@@ -160,14 +186,14 @@ function buildContentListSystem(projectId: string): string {
     const lineLabel = new Map((kit?.contentLines || []).map((l) => [l.key, l.label]));
     for (const a of items) {
       const line = a.content_line ? `，${lineLabel.get(a.content_line) || a.content_line}` : '';
-      lines.push(`  - 「${a.title}」(id=${a.id}, ${statusLabels[a.status] || a.status}${line}${a.angle ? `，角度：${a.angle}` : ''})`);
+      lines.push(`  - 「${a.title}」(id=${a.id}, ${statusLabels[a.status] || a.status}${line}${a.angle ? `，角度：${a.angle}` : ''}${publishSuffix(a.id)})`);
     }
   }
   const loose = articles.filter((a) => !a.series_id);
   if (loose.length) {
     lines.push('\n未归系列：');
     for (const a of loose) {
-      lines.push(`  - 「${a.title}」(id=${a.id}, ${statusLabels[a.status] || a.status}${a.angle ? `，角度：${a.angle}` : ''})`);
+      lines.push(`  - 「${a.title}」(id=${a.id}, ${statusLabels[a.status] || a.status}${a.angle ? `，角度：${a.angle}` : ''}${publishSuffix(a.id)})`);
     }
   }
   const counts = articles.reduce<Record<string, number>>((acc, a) => {
@@ -179,40 +205,38 @@ function buildContentListSystem(projectId: string): string {
 }
 
 /**
- * 构造「本条消息 @ 引用的需求」上下文：把被 @ 的模块/页面完整文档喂给模型，
- * 并给出聚焦指令（新页面归属被@模块、修订被@页面直接带 id）。
+ * 构造「本条消息选中的选题」上下文：把选中的内容计划文章（选题）的标题、切入角度、
+ * 状态和已有正文喂给模型，并给出聚焦指令（选题是本条消息的主角，当轮就注入）。
  */
-function buildRefRequirementContext(refReqIds: string[]): string {
-  const refs = refReqIds
-    .map((id) => getRequirement(id))
-    .filter((r): r is NonNullable<typeof r> => !!r);
+const ARTICLE_STATUS_LABEL: Record<string, string> = {
+  topic: '选题', writing: '写作中', final: '定稿', published: '已发',
+};
+function buildRefArticleContext(refArticleIds: string[]): string {
+  const refs = refArticleIds
+    .map((id) => getArticle(id))
+    .filter((a): a is NonNullable<typeof a> => !!a);
   if (refs.length === 0) return '';
 
   const blocks: string[] = [];
-  for (const r of refs) {
-    const kind = r.kind === 'page' ? '页面' : '模块';
-    let head = `【用户 @ 引用了${kind}：${r.title}】(id=${r.id}, 状态=${r.status === 'confirmed' ? '已确认' : '待确认'})`;
-    // 页面带上归属模块文档，让上下文完整
-    let parentDoc = '';
-    if (r.kind === 'page' && r.parent_id) {
-      const parent = getRequirement(r.parent_id);
-      if (parent) {
-        parentDoc = `\n\n[归属模块：${parent.title}]\n${parent.doc_md || ''}`;
-      }
-    }
-    blocks.push(`${head}\n${r.doc_md || ''}${parentDoc}`);
+  for (const a of refs) {
+    const seriesName = a.series_id ? getSeries(a.series_id)?.title : '';
+    const head = `【用户本条消息选中了选题：${a.title}】(articleId=${a.id}, 状态=${ARTICLE_STATUS_LABEL[a.status] || a.status}${seriesName ? `，系列=${seriesName}` : ''})`;
+    const angle = a.angle ? `\n切入角度：${a.angle}` : '';
+    const doc = a.doc_md ? `\n\n已有正文：\n${a.doc_md}` : '\n\n（该选题还没有正文）';
+    blocks.push(`${head}${angle}${doc}`);
   }
 
-  const titles = refs.map((r) => `「${r.title}」`).join('、');
+  const titles = refs.map((a) => `《${a.title}》`).join('、');
   return (
-    `【本条消息 @ 聚焦了以下需求：${titles}】\n` +
-    `用户接下来在围绕这些需求聊，请据此聚焦：\n` +
-    `- 用户要在被 @ 的${refs.some((r) => r.kind === 'module') ? '模块' : '需求'}下聊新页面/补充内容时，沉淀页面请直接带上对应模块的 module_id（见下方文档里的 id），不要再猜归属。\n` +
-    `- 用户在细化/修改被 @ 的页面或模块时，修订请用 revise_requirement 并带上对应 id；聊出来的新内容属于这些需求的补全。\n` +
-    `- 如果用户说的内容跟被 @ 需求无关（开了新话题），正常按新话题处理，不要硬套。\n\n` +
+    `【本条消息聚焦以下选题：${titles}】\n` +
+    `用户正在围绕这篇/这几篇内容计划里的选题聊，请据此聚焦：\n` +
+    `- 直接针对选中选题展开（细化角度、写稿/改稿、起标题、适配渠道等）；需要落库改稿时用 update_article 并带上对应 articleId。\n` +
+    `- 不要把它当成新选题重复 propose_article；更新已有选题用 update_article。\n` +
+    `- 如果用户说的内容明显与选中选题无关（开了新话题），正常按新话题处理，不要硬套。\n\n` +
     blocks.join('\n\n---\n\n')
   );
 }
+
 function buildSkillDoneGuide(skillRecord: { result?: string; skillMeta?: { skillId?: string; skillName?: string } }): string {
   const skillId = skillRecord.skillMeta?.skillId || '';
   const tail = '你可以直接在下方追问，或把结论同步到需求文档后再生成/调整原型。';
@@ -244,13 +268,13 @@ export async function handleChat(params: {
   conversationId: string | undefined;
   message: string;
   attachments?: unknown[];
-  /** 本条消息 @ 引用的需求 id 列表（模块/页面） */
-  refRequirements?: unknown[];
+  /** 本条消息选中的内容计划选题（文章）id 列表 */
+  refArticles?: unknown[];
   forceSkillId?: string | null;
   sendSSE: SendSSE;
   signal?: AbortSignal;
 }): Promise<{ projectId: string | null; conversationId: string }> {
-  const { message, attachments = [], sendSSE, signal, forceSkillId, refRequirements = [] } = params;
+  const { message, attachments = [], sendSSE, signal, forceSkillId, refArticles = [] } = params;
   let { projectId, conversationId } = params;
 
   // 1. 项目是可选的。没有 projectId 就是游离对话，不自动建项目；
@@ -270,8 +294,8 @@ export async function handleChat(params: {
   // 注意：旧的 /skill 直连旁路已封陈。前端选技能后改为传 forceSkillId，
   // 统一走接待员，由接待员做上下文补全/追问后调 invoke_skill，技能执行员保持无状态。
 
-  // 3. 持久化用户消息（携带已上传的附件元信息 + @ 引用的需求）
-  appendMessage(convId, 'user', message, attachments, { refRequirements: refRequirements as any });
+  // 3. 持久化用户消息（携带已上传的附件元信息 + 选中的选题）
+  appendMessage(convId, 'user', message, attachments, { refArticles: refArticles as any });
 
 
   // 4. 构造上下文（项目档案 + 历史摘要 + 最近消息）
@@ -296,6 +320,12 @@ export async function handleChat(params: {
       `用户的问题是：${message}`;
   }
 
+  // 本条消息选中的选题（文章）聚焦上下文：当轮就注入标题/角度/状态/正文
+  const refArticleIds = (refArticles as Array<{ id?: string } | string>)
+    .map((x) => (typeof x === 'string' ? x : x?.id))
+    .filter((x): x is string => !!x);
+  const refArticleSystem = refArticleIds.length ? buildRefArticleContext(refArticleIds) : '';
+
   // 组装喂给模型的完整上下文；keepRecent 控制最近保留原文的消息条数（上下文超限时砍半重建用）
   const buildMessages = (keepRecent: number): LLMMessage[] => {
     const { summarySystem, messages: recentMessages } = buildCompressedHistory(convId, { keepRecent });
@@ -304,6 +334,7 @@ export async function handleChat(params: {
     if (contentListSystem) base.push({ role: 'system', content: contentListSystem });
     if (summarySystem) base.push({ role: 'system', content: summarySystem });
     base.push(...recentMessages);
+    if (refArticleSystem) base.push({ role: 'system', content: refArticleSystem });
     if (skillGuideSystem) base.push({ role: 'system', content: skillGuideSystem });
     return base;
   };

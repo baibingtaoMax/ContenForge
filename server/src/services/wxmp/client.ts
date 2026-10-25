@@ -4,27 +4,13 @@
 // 提前于过期时间刷新；40001/42001 失效时强制重取一次。
 // ============================================
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { loadWxmpCredentials } from './credentials.js';
 
 const API = 'https://api.weixin.qq.com';
 
 function loadCredentials(): { appId: string; secret: string } {
-  const path =
-    process.env.WXMP_CREDENTIALS_PATH ||
-    resolve(process.cwd(), '../../tools/wxmp/.env');
-  const text = readFileSync(path, 'utf8');
-  const env: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const i = t.indexOf('=');
-    if (i > 0) env[t.slice(0, i).trim()] = t.slice(i + 1).trim();
-  }
-  if (!env.WXMP_APP_ID || !env.WXMP_APP_SECRET) {
-    throw new Error('tools/wxmp/.env 缺少 WXMP_APP_ID / WXMP_APP_SECRET');
-  }
-  return { appId: env.WXMP_APP_ID, secret: env.WXMP_APP_SECRET };
+  const c = loadWxmpCredentials();
+  return { appId: c.appId, secret: c.appSecret };
 }
 
 interface TokenState {
@@ -84,6 +70,11 @@ async function call(
     return call(method, path, body, isForm, true);
   }
   return j;
+}
+
+/** 清除进程内缓存的 access_token（更换 AppID/Secret 后调用，强制下次重取） */
+export function invalidateToken(): void {
+  state = null;
 }
 
 export { fetchToken };

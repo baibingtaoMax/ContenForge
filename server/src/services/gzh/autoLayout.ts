@@ -8,11 +8,13 @@ import { chatCompletionWithTools } from '../../llm/client.js';
 import { renderGzh } from './renderer.js';
 import { validateLayoutHtml } from './validate.js';
 import { GzhBuilder, LAYOUT_TOOLS } from './layoutTools.js';
-import type { GzhSignoff } from './types.js';
+import type { GzhDoc, GzhSignoff } from './types.js';
 
 export interface AutoLayoutResult {
   ok: boolean;
   html?: string;
+  /** 无图结构稿基线，供「采用配图」按锚点幂等合并 */
+  doc?: GzhDoc;
   leafCount?: number;
   error?: string;
   componentCount?: number;
@@ -115,5 +117,5 @@ export async function autoLayoutGzh(params: {
     return { ok: false, error: `成品未通过校验：${errors.join('；')}`, leafCount, componentCount: builder.count, narration };
   }
 
-  return { ok: true, html, leafCount, componentCount: builder.count, narration };
+  return { ok: true, html, doc, leafCount, componentCount: builder.count, narration };
 }

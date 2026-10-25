@@ -123,6 +123,8 @@ export const LAYOUT_TOOLS: ChatCompletionTool[] = [
     },
     ['items']
   ),
+  // 注：image 块由确定性「采用配图」按锚点合并（见 gzh/mergeImages.ts）与手工结构稿注入，
+  // 刻意不暴露给 AI 一键排版的 LLM——铁律①配图是独立工序，避免模型编造图片 URL。
   fn('add_dots', '添加三色圆点分隔符。', {}, []),
   fn(
     'add_closing',
@@ -223,6 +225,17 @@ export class GzhBuilder {
           if (!items.length) return '错误：胶囊项为空。';
           this.blocks.push({ kind: 'pills', label: args.label as string, items });
           return `ok：胶囊组已添加（${items.length} 项）。`;
+        }
+        case 'add_image': {
+          const src = String(args.src || '').trim();
+          if (!src) return '错误：图片 src 为空。';
+          this.blocks.push({
+            kind: 'image',
+            src,
+            alt: args.alt ? String(args.alt) : undefined,
+            caption: args.caption ? String(args.caption) : undefined,
+          });
+          return `ok：插图已添加，当前共 ${this.blocks.length} 个组件。`;
         }
         case 'add_dots': {
           this.blocks.push({ kind: 'dots' });

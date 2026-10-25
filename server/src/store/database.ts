@@ -141,8 +141,8 @@ export function initDatabase(): void {
   ensureMessagesColumn(d, 'assessment_id', 'TEXT');
   ensureMessagesColumn(d, 'reasoning_content', 'TEXT');
   ensureMessagesColumn(d, 'skill_meta', 'TEXT');
-  // ProtoForge：本条消息 @ 引用的需求（模块/页面）id 列表，JSON
-  ensureMessagesColumn(d, 'ref_requirements', "TEXT DEFAULT '[]'");
+  // ContentForge：本条消息选中的内容计划选题（文章）
+  ensureMessagesColumn(d, 'ref_articles', "TEXT DEFAULT '[]'");
   d.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);`);
 
   // ContentForge：projects 复用为「推广主体」，加类型与结构化档案
@@ -914,12 +914,12 @@ export function appendMessage(
   role: string,
   content: string,
   attachments: unknown[] = [],
-  opts: { agentRole?: string; agentName?: string; refRequirements?: unknown[]; reasoningContent?: string } = {}
+  opts: { agentRole?: string; agentName?: string; refArticles?: unknown[]; reasoningContent?: string } = {}
 ): void {
   const d = getDb();
   const now = new Date().toISOString();
   d.prepare(
-    'INSERT INTO messages (conversation_id, role, content, attachments, agent_role, agent_name, ref_requirements, reasoning_content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (conversation_id, role, content, attachments, agent_role, agent_name, ref_articles, reasoning_content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     conversationId,
     role,
@@ -927,7 +927,7 @@ export function appendMessage(
     JSON.stringify(attachments),
     opts.agentRole || null,
     opts.agentName || null,
-    JSON.stringify(opts.refRequirements || []),
+    JSON.stringify(opts.refArticles || []),
     opts.reasoningContent || null,
     now
   );

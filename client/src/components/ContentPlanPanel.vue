@@ -26,24 +26,32 @@
 
       <div class="groups">
         <section v-for="s in series" :key="s.id" class="group">
-          <div class="group-head">
+          <div class="group-head collapsible" @click="toggleCollapse(s.id)">
+            <AppIcon name="chevron-right" :size="13" class="group-caret" :class="{ collapsed: isCollapsed(s.id) }" />
             <AppIcon name="layers" tint="indigo" :size="16" />
             <span class="group-name">{{ s.title }}</span>
             <span class="group-count">{{ bySeries(s.id).length }} 篇</span>
             <span class="group-spacer" />
-            <el-button text size="small" @click="openArticleDialog(s.id)">+ 加文章</el-button>
+            <el-button text size="small" @click.stop="openArticleDialog(s.id)">+ 加文章</el-button>
+            <el-button text size="small" @click.stop="openEditSeries(s)">编辑</el-button>
+            <el-button text size="small" class="del-series-btn" @click.stop="removeSeries(s)">删除</el-button>
           </div>
-          <div class="group-desc" v-if="s.description">{{ s.description }}</div>
-          <ArticleRow v-for="a in bySeries(s.id)" :key="a.id" :article="a" @open="openDetail" @status="changeStatus" @del="removeArticle" />
+          <template v-if="!isCollapsed(s.id)">
+            <div class="group-desc" v-if="s.description">{{ s.description }}</div>
+            <ArticleRow v-for="a in bySeries(s.id)" :key="a.id" :article="a" @open="openDetail" @status="changeStatus" @del="removeArticle" />
+          </template>
         </section>
 
         <section v-if="loose.length" class="group">
-          <div class="group-head">
+          <div class="group-head collapsible" @click="toggleCollapse(LOOSE_KEY)">
+            <AppIcon name="chevron-right" :size="13" class="group-caret" :class="{ collapsed: isCollapsed(LOOSE_KEY) }" />
             <AppIcon name="bookmark" tint="amber" :size="16" />
             <span class="group-name">未归系列</span>
             <span class="group-count">{{ loose.length }} 篇</span>
           </div>
-          <ArticleRow v-for="a in loose" :key="a.id" :article="a" @open="openDetail" @status="changeStatus" @del="removeArticle" />
+          <template v-if="!isCollapsed(LOOSE_KEY)">
+            <ArticleRow v-for="a in loose" :key="a.id" :article="a" @open="openDetail" @status="changeStatus" @del="removeArticle" />
+          </template>
         </section>
       </div>
     </template>
@@ -51,13 +59,13 @@
     <!-- 详情视图 -->
     <ArticleDetail v-else :article-id="selectedId" :project-id="props.projectId" @back="selectedId = null" @changed="reload" />
 
-    <!-- 新建系列 -->
-    <el-dialog v-model="seriesDialog" title="新建系列" width="460px">
+    <!-- 新建/编辑系列 -->
+    <el-dialog v-model="seriesDialog" :title="seriesForm.id ? '编辑系列' : '新建系列'" width="460px">
       <el-input v-model="seriesForm.title" placeholder="系列名，如「30篇冷启动系列」" />
       <el-input v-model="seriesForm.description" type="textarea" :rows="2" placeholder="这个系列讲什么（可选）" style="margin-top:10px" />
       <template #footer>
         <el-button @click="seriesDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitSeries">创建</el-button>
+        <el-button type="primary" @click="submitSeries">{{ seriesForm.id ? '保存' : '创建' }}</el-button>
       </template>
     </el-dialog>
 
@@ -105,7 +113,8 @@ import ArticleDetail from './ArticleDetail.vue'
 import ArticleRow from './ArticleRow.vue'
 import { useChatStore } from '@/stores/chat'
 import {
-  listSeries, createSeries as apiCreateSeries,
+  listSeries, createSeries as apiCreateSeries, updateSeries as apiUpdateSeries,
+  deleteSeries as apiDeleteSeries,
   listArticles, createArticle, batchCreateArticles, updateArticle, deleteArticleApi,
 } from '@/api'
 import type { Series, Article, ArticleStatus } from '@/types'
@@ -123,6 +132,16 @@ const STATUS_OPTS: Array<{ value: ArticleStatus; label: string }> = [
 const series = ref<Series[]>([])
 const articles = ref<Article[]>([])
 const selectedId = ref<string | null>(null)
+
+// 折叠状态（仅本会话记忆）
+const LOOSE_KEY = '__loose__'
+const collapsed = ref<Set<string>>(new Set())
+function isCollapsed(id: string) { return collapsed.value.has(id) }
+function toggleCollapse(id: string) {
+  const next = new Set(collapsed.value)
+  if (next.has(id)) next.delete(id); else next.add(id)
+  collapsed.value = next
+}
 
 const counts = computed(() => {
   const c: Record<string, number> = {}
@@ -163,15 +182,33 @@ async function removeArticle(a: Article) {
   } catch { /* cancel */ }
 }
 
-// ---- 新建系列 ----
+// ---- 新建/编辑系列 ----
 const seriesDialog = ref(false)
-const seriesForm = reactive({ title: '', description: '' })
-function openSeriesDialog() { seriesForm.title = ''; seriesForm.description = ''; seriesDialog.value = true }
+const seriesForm = reactive<{ id: string | null; title: string; description: string }>({ id: null, title: '', description: '' })
+function openSeriesDialog() { seriesForm.id = null; seriesForm.title = ''; seriesForm.description = ''; seriesDialog.value = true }
+function openEditSeries(s: Series) { seriesForm.id = s.id; seriesForm.title = s.title; seriesForm.description = s.description || ''; seriesDialog.value = true }
 async function submitSeries() {
   if (!seriesForm.title.trim()) return ElMessage.warning('系列名必填')
-  await apiCreateSeries(props.projectId, seriesForm.title.trim(), seriesForm.description)
+  if (seriesForm.id) {
+    await apiUpdateSeries(seriesForm.id, { title: seriesForm.title.trim(), description: seriesForm.description })
+    ElMessage.success('系列已更新')
+  } else {
+    await apiCreateSeries(props.projectId, seriesForm.title.trim(), seriesForm.description)
+    ElMessage.success('系列已创建')
+  }
   seriesDialog.value = false
-  ElMessage.success('系列已创建')
+  reload()
+}
+async function removeSeries(s: Series) {
+  const n = bySeries(s.id).length
+  const tip = n > 0
+    ? `删除系列「${s.title}」？\n系列下 ${n} 篇文章不会被删除，会移到「未归系列」。`
+    : `删除空系列「${s.title}」？`
+  try {
+    await ElMessageBox.confirm(tip, '删除系列', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch { return }
+  await apiDeleteSeries(s.id)
+  ElMessage.success(n > 0 ? `系列已删除，${n} 篇文章移到未归系列` : '系列已删除')
   reload()
 }
 
@@ -253,9 +290,14 @@ export default { name: 'ContentPlanPanel' }
 .groups { padding: 14px 26px 60px; max-width: 900px; margin: 0 auto; }
 .group { margin-bottom: 22px; }
 .group-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.group-head.collapsible { cursor: pointer; user-select: none; }
+.group-caret { color: var(--pf-text-3); transition: transform .15s; flex-shrink: 0; }
+.group-caret:not(.collapsed) { transform: rotate(90deg); }
 .group-name { font-size: 14px; font-weight: 700; color: var(--pf-text-1); }
 .group-count { font-size: 11.5px; color: var(--pf-text-3); }
 .group-spacer { flex: 1; }
+.del-series-btn { color: var(--pf-danger, #dc2626) !important; }
+.del-series-btn:hover { background: rgba(220,38,38,.08) !important; }
 .group-desc { font-size: 12px; color: var(--pf-text-3); margin: -4px 0 8px 24px; }
 .batch-hint { font-size: 12px; color: var(--pf-text-3); margin-top: 8px; line-height: 1.6; }
 </style>

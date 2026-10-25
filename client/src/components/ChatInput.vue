@@ -1,17 +1,15 @@
 <template>
   <div class="chat-input">
     <!-- 待发送附件预览（粘贴/选择后先暂存，不立即上传） -->
-    <div v-if="pendingFiles.length || refReqs.length" class="pending-files">
-      <!-- @ 引用的需求 chips -->
-      <div v-for="r in refReqs" :key="r.id" class="pending-file ref-chip">
-        <span class="ref-icon" :class="r.kind === 'page' ? 'fi-sky' : 'fi-amber'">
-          <AppIcon :name="r.kind === 'page' ? 'file' : 'layers'" :size="14" />
-        </span>
+    <div v-if="pendingFiles.length || refArticles.length" class="pending-files">
+      <!-- 选中的选题 chips -->
+      <div v-for="a in refArticles" :key="a.id" class="pending-file ref-chip article-chip">
+        <span class="ref-icon fi-art"><AppIcon name="bookmark" :size="14" /></span>
         <div class="pending-meta">
-          <span class="pending-name">@{{ r.title }}</span>
-          <span class="pending-size">{{ r.kind === 'page' ? '页面' : '模块' }}</span>
+          <span class="pending-name">{{ a.title }}</span>
+          <span class="pending-size">选题{{ a.status ? ' · ' + articleStatusLabel(a.status) : '' }}</span>
         </div>
-        <el-icon class="pending-remove" @click="removeRef(r.id)"><Close /></el-icon>
+        <el-icon class="pending-remove" @click="removeArticle(a.id)"><Close /></el-icon>
       </div>
       <div v-for="f in pendingFiles" :key="f.id" class="pending-file">
         <img v-if="f.preview" :src="f.preview" class="pending-thumb" />
@@ -75,49 +73,44 @@
           title="上传附件"
         ><AppIcon name="paperclip" :size="17" :stroke-width="2" /></el-button>
       </el-upload>
-      <!-- @ 引用需求 -->
+      <!-- # 引用选题（内容计划文章） -->
       <el-popover
         placement="top-start"
-        :width="340"
+        :width="360"
         trigger="click"
-        :visible="refPopVisible"
-        :disabled="store.isStreaming || !projectRequirements.length"
-        @update:visible="(v: boolean) => (refPopVisible = v)"
+        :visible="articlePopVisible"
+        :disabled="store.isStreaming || projectArticles.length === 0"
+        @update:visible="(v: boolean) => (articlePopVisible = v)"
       >
         <template #reference>
           <el-button
-            class="attach-btn ref-btn"
+            class="attach-btn article-btn"
             text
-            :class="{ 'is-active': refReqs.length > 0, 'is-disabled': store.isStreaming || !projectRequirements.length }"
-            :disabled="store.isStreaming || !projectRequirements.length"
-            :title="projectRequirements.length ? '@ 引用模块/页面' : '当前项目暂无已沉淀需求'"
-          ><span class="at-sign">@</span></el-button>
+            :class="{ 'is-active': refArticles.length > 0, 'is-disabled': store.isStreaming || projectArticles.length === 0 }"
+            :disabled="store.isStreaming || projectArticles.length === 0"
+            :title="projectArticles.length ? '选择内容计划里的选题' : '当前项目内容计划还没有选题'"
+          ><AppIcon name="bookmark" :size="16" :stroke-width="2" /></el-button>
         </template>
         <div class="ref-popover">
-          <div class="ref-pop-title">引用需求（模块/页面）</div>
-          <el-input v-model="refQuery" size="small" placeholder="搜索模块/页面…" class="ref-search" clearable>
+          <div class="ref-pop-title">选择选题（内容计划）</div>
+          <el-input v-model="articleQuery" size="small" placeholder="搜索选题标题…" class="ref-search" clearable>
             <template #prefix><AppIcon name="search" :size="13" /></template>
           </el-input>
-          <div v-if="filteredRefs === 0" class="ref-empty">没有匹配的需求</div>
-          <div v-else class="ref-list">
-            <template v-for="m in filteredModules" :key="m.id">
-              <div class="ref-item module" :class="{ 'is-selected': isRefSelected(m.id) }" @click="toggleRef(m)">
-                <span class="ref-item-ic"><AppIcon name="layers" :size="13" /></span>
-                <span class="ref-item-name">{{ m.title }}</span>
-                <span class="ref-tag">模块</span>
-                <AppIcon v-if="isRefSelected(m.id)" name="check" :size="13" class="ref-check" />
-              </div>
+          <div v-if="filteredArticleGroups.length === 0" class="ref-empty">没有匹配的选题</div>
+          <div v-else class="ref-list article-list">
+            <template v-for="g in filteredArticleGroups" :key="g.seriesId || '__loose__'">
+              <div v-if="g.seriesId" class="article-group-name"><AppIcon name="layers" :size="12" /> {{ g.seriesTitle }}</div>
               <div
-                v-for="p in visiblePages(m.id)"
-                :key="p.id"
-                class="ref-item page"
-                :class="{ 'is-selected': isRefSelected(p.id) }"
-                @click="toggleRef(p)"
+                v-for="a in g.items"
+                :key="a.id"
+                class="ref-item article-item"
+                :class="{ 'is-selected': isArticleSelected(a.id) }"
+                @click="toggleArticle(a)"
               >
-                <span class="ref-item-ic"><AppIcon name="file" :size="12" /></span>
-                <span class="ref-item-name">{{ p.title }}</span>
-                <span class="ref-tag sky">页面</span>
-                <AppIcon v-if="isRefSelected(p.id)" name="check" :size="13" class="ref-check" />
+                <span class="article-dot" :class="a.status"></span>
+                <span class="ref-item-name">{{ a.title }}</span>
+                <span class="article-status">{{ articleStatusLabel(a.status) }}</span>
+                <AppIcon v-if="isArticleSelected(a.id)" name="check" :size="13" class="ref-check" />
               </div>
             </template>
           </div>
@@ -163,8 +156,8 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
-import { listRequirements } from '@/api'
-import type { SkillSummary, Requirement } from '@/types'
+import { listArticles, listSeries } from '@/api'
+import type { SkillSummary, Article, Series } from '@/types'
 import AppIcon from './AppIcon.vue'
 
 const store = useChatStore()
@@ -173,53 +166,54 @@ const inputRef = ref<any>(null)
 const selectedSkill = ref<SkillSummary | null>(null)
 const skillPopVisible = ref(false)
 
-// ===== @ 引用需求 =====
-const refPopVisible = ref(false)
-const refQuery = ref('')
-const refReqs = ref<Array<{ id: string; title: string; kind: 'module' | 'page'; status?: string }>>([])
-const projectRequirements = ref<Requirement[]>([])
+// ===== # 引用选题（内容计划文章）=====
+const articlePopVisible = ref(false)
+const articleQuery = ref('')
+const refArticles = ref<Array<{ id: string; title: string; status?: string; seriesTitle?: string }>>([])
+const projectArticles = ref<Article[]>([])
+const projectSeries = ref<Series[]>([])
 
-async function loadRequirements() {
+const ARTICLE_STATUS_LABEL: Record<string, string> = {
+  topic: '选题', writing: '写作中', final: '定稿', published: '已发',
+}
+function articleStatusLabel(s?: string) { return (s && ARTICLE_STATUS_LABEL[s]) || '选题' }
+
+async function loadArticles() {
   const pid = store.currentProjectId
-  if (!pid) { projectRequirements.value = []; return }
+  if (!pid) { projectArticles.value = []; projectSeries.value = []; return }
   try {
-    projectRequirements.value = await listRequirements(pid)
-  } catch { projectRequirements.value = [] }
+    const [arts, sers] = await Promise.all([listArticles(pid), listSeries(pid)])
+    projectArticles.value = arts
+    projectSeries.value = sers
+  } catch { projectArticles.value = []; projectSeries.value = [] }
 }
-watch(() => store.currentProjectId, () => { refReqs.value = []; loadRequirements() }, { immediate: true })
-// 需求可能在对话中新增，每次打开选择器时刷新
-watch(refPopVisible, (v) => { if (v) loadRequirements() })
+watch(() => store.currentProjectId, () => { refArticles.value = []; loadArticles() }, { immediate: true })
+watch(articlePopVisible, (v) => { if (v) loadArticles() })
 
-const modules = computed(() => projectRequirements.value.filter((r) => r.kind === 'module'))
-const pagesUnder = (moduleId: string) =>
-  projectRequirements.value.filter((r) => r.kind === 'page' && r.parent_id === moduleId)
-// 搜索时页面也按词过滤；无搜索词显示全部
-const visiblePages = (moduleId: string) => {
-  const q = refQuery.value.trim().toLowerCase()
-  const pages = pagesUnder(moduleId)
-  if (!q) return pages
-  return pages.filter((p) => p.title.toLowerCase().includes(q))
-}
-const filteredModules = computed(() => {
-  const q = refQuery.value.trim().toLowerCase()
-  if (!q) return modules.value
-  return modules.value.filter((m) => {
-    const self = m.title.toLowerCase().includes(q)
-    const hasMatchingPage = pagesUnder(m.id).some((p) => p.title.toLowerCase().includes(q))
-    return self || hasMatchingPage
-  })
+const filteredArticleGroups = computed(() => {
+  const q = articleQuery.value.trim().toLowerCase()
+  const match = (t: string) => !q || t.toLowerCase().includes(q)
+  const groups: Array<{ seriesId: string | null; seriesTitle: string; items: Article[] }> = []
+  for (const s of projectSeries.value) {
+    const items = projectArticles.value.filter((a) => a.series_id === s.id && match(a.title))
+    if (items.length) groups.push({ seriesId: s.id, seriesTitle: s.title, items })
+  }
+  const loose = projectArticles.value.filter((a) => !a.series_id && match(a.title))
+  if (loose.length) groups.push({ seriesId: null, seriesTitle: '未归系列', items: loose })
+  return groups
 })
-const filteredRefs = computed(() => filteredModules.value.length)
-
-function isRefSelected(id: string) { return refReqs.value.some((r) => r.id === id) }
-function toggleRef(r: Requirement) {
-  const idx = refReqs.value.findIndex((x) => x.id === r.id)
-  if (idx >= 0) refReqs.value.splice(idx, 1)
-  else refReqs.value.push({ id: r.id, title: r.title, kind: r.kind as 'module' | 'page', status: r.status })
+function isArticleSelected(id: string) { return refArticles.value.some((a) => a.id === id) }
+function toggleArticle(a: Article) {
+  const idx = refArticles.value.findIndex((x) => x.id === a.id)
+  if (idx >= 0) refArticles.value.splice(idx, 1)
+  else {
+    const seriesTitle = a.series_id ? projectSeries.value.find((s) => s.id === a.series_id)?.title : undefined
+    refArticles.value.push({ id: a.id, title: a.title, status: a.status, seriesTitle })
+  }
 }
-function removeRef(id: string) {
-  const idx = refReqs.value.findIndex((r) => r.id === id)
-  if (idx >= 0) refReqs.value.splice(idx, 1)
+function removeArticle(id: string) {
+  const idx = refArticles.value.findIndex((x) => x.id === id)
+  if (idx >= 0) refArticles.value.splice(idx, 1)
 }
 
 // 选中技能同步到 store：接待员追问期间保持，技能真正开跑（skill_start）后由 store 清除
@@ -240,7 +234,7 @@ const uploading = ref(false)
 
 const canSend = computed(
   () => !store.isStreaming && !uploading.value &&
-    (store.inputText.trim().length > 0 || pendingFiles.value.length > 0 || !!selectedSkill.value)
+    (store.inputText.trim().length > 0 || pendingFiles.value.length > 0 || !!selectedSkill.value || refArticles.value.length > 0)
 )
 
 const placeholder = computed(() => {
@@ -257,7 +251,7 @@ watch(() => store.currentConversationId, (newId, oldId) => {
   if (oldId && oldId !== newId) {
     clearPending()
     selectSkill(null)
-    refReqs.value = []
+    refArticles.value = []
   }
 })
 
@@ -279,8 +273,8 @@ function onSend() {
 async function doSend() {
   const text = store.inputText.trim()
   const files = pendingFiles.value.map((f) => f.file)
-  const refs = refReqs.value.slice()
-  if (!text && files.length === 0 && !selectedSkill.value) return
+  const arts = refArticles.value.slice()
+  if (!text && files.length === 0 && !selectedSkill.value && arts.length === 0) return
 
   // 有附件（文件或链接）：先处理拿到元信息（只传不写消息），
   // 然后把文字 + 附件元信息合成一条用户消息发送
@@ -309,8 +303,9 @@ async function doSend() {
   const content = text
 
   store.inputText = ''
-  refReqs.value = []
-  await store.send(content, attachmentMetas, refs)
+  const sentArticles = refArticles.value.slice()
+  refArticles.value = []
+  await store.send(content, attachmentMetas, sentArticles)
 }
 
 function addPending(file: File) {
@@ -459,7 +454,7 @@ function extractUrls(text: string): string[] {
     }
   }
 
-  // @ 引用 chip
+  // 引用类 chip（选题复用；原 @需求 入口已移除）
   .ref-chip {
     background: #fffaf2;
     border-color: #f5e0c0;
@@ -473,8 +468,10 @@ function extractUrls(text: string): string[] {
       flex-shrink: 0;
       &.fi-amber { background: var(--pf-tint-amber-bg, #fef3e2); color: var(--pf-tint-amber, #d97706); }
       &.fi-sky { background: var(--pf-tint-sky-bg); color: var(--pf-tint-sky); }
+      &.fi-art { background: #e6f7ee; color: #047857; }
     }
   }
+  .article-chip { background: #f3fbf6; border-color: #bfe6d2; }
 
   .input-wrapper {
     display: flex;
@@ -515,18 +512,10 @@ function extractUrls(text: string): string[] {
     color: var(--pf-violet-text);
     background: var(--pf-violet-bg) !important;
   }
-  // @ 引用按钮
-  .ref-btn {
-    .at-sign {
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1;
-    }
-    &.is-active {
-      color: var(--pf-tint-amber, #d97706) !important;
-      background: var(--pf-tint-amber-bg, #fef3e2) !important;
-    }
-    &.is-disabled { opacity: 0.5; }
+  // 选择选题按钮
+  .article-btn.is-active {
+    color: #047857 !important;
+    background: #e6f7ee !important;
   }
 
   .send-btn {
@@ -716,6 +705,38 @@ function extractUrls(text: string): string[] {
       }
     }
     .ref-check { color: var(--pf-tint-amber, #d97706); font-weight: 700; flex-shrink: 0; }
+  }
+
+  // 选题选择器
+  .article-group-name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--pf-text-3);
+    padding: 8px 9px 3px;
+  }
+  .article-item {
+    &.is-selected { background: #e6f7ee; }
+    .article-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      flex-shrink: 0;
+      background: #9ca3af;
+      &.topic { background: #6366f1; }
+      &.writing { background: #b45309; }
+      &.final { background: #047857; }
+      &.published { background: #15803d; }
+    }
+    .article-status {
+      font-size: 10.5px;
+      color: #047857;
+      background: rgba(4, 120, 87, 0.1);
+      border-radius: 4px;
+      padding: 1px 6px;
+      flex-shrink: 0;
+    }
+    &.is-selected .ref-check { color: #047857; }
   }
 }
 </style>

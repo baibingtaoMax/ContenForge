@@ -254,9 +254,9 @@ export async function assessmentRoutes(app: FastifyInstance) {
 
   // ---------- 聊天（SSE） ----------
   app.post<{
-    Body: { projectId?: string; conversationId?: string; message: string; attachments?: unknown[]; refRequirements?: unknown[]; forceSkillId?: string };
+    Body: { projectId?: string; conversationId?: string; message: string; attachments?: unknown[]; refArticles?: unknown[]; forceSkillId?: string };
   }>('/api/chat', async (request, reply) => {
-    const { projectId, conversationId, message, attachments, refRequirements, forceSkillId } = request.body || {};
+    const { projectId, conversationId, message, attachments, refArticles, forceSkillId } = request.body || {};
     if (!message?.trim()) return reply.status(400).send({ error: '消息不能为空' });
 
     const controller = new AbortController();
@@ -279,7 +279,7 @@ export async function assessmentRoutes(app: FastifyInstance) {
           conversationId,
           message: message.trim(),
           attachments: attachments || [],
-          refRequirements: refRequirements || [],
+          refArticles: refArticles || [],
           forceSkillId: forceSkillId || null,
           sendSSE: (event: SSEEvent) => emitToHub(convKey, event),
           signal: controller.signal,

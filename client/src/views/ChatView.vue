@@ -48,6 +48,9 @@
           <button class="tbtn" @click="goMcp">
             <AppIcon name="database" :size="15" :stroke-width="2" /> 数据源
           </button>
+          <button class="tbtn" @click="showWxmpConfig = true">
+            <AppIcon name="chat" :size="15" :stroke-width="2" /> 公众号
+          </button>
           <button class="tbtn" @click="showConfig = true">
             <AppIcon name="settings" :size="15" :stroke-width="2" /> 模型配置
           </button>
@@ -136,6 +139,7 @@
     </main>
 
     <ModelConfigDialog v-model="showConfig" />
+    <WxmpConfigDialog v-model="showWxmpConfig" />
 
     <!-- 对话内点沉淀卡片/@ pill：需求文档只读抽屉，不离开对话 -->
     <ReqPreviewDrawer />
@@ -152,6 +156,7 @@ import ProjectSidebar from '@/components/ProjectSidebar.vue'
 import ChatStream from '@/components/ChatStream.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import ModelConfigDialog from '@/components/ModelConfigDialog.vue'
+import WxmpConfigDialog from '@/components/WxmpConfigDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import RequirementPanel from '@/components/RequirementPanel.vue'
@@ -168,6 +173,7 @@ import AppIcon from '@/components/AppIcon.vue'
 const store = useChatStore()
 const router = useRouter()
 const showConfig = ref(false)
+const showWxmpConfig = ref(false)
 const modelName = ref('')
 
 const currentConvTitle = computed(() =>

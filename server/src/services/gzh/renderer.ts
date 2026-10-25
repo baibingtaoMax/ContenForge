@@ -207,6 +207,21 @@ function dots(first: boolean): string {
   </section>`, first);
 }
 
+function image(b: Extract<GzhBlock, { kind: 'image' }>, first: boolean): string {
+  const src = esc(b.src);
+  const alt = esc(b.alt || '图片');
+  // 逐字转录主题库组件 19（image-card）；无 caption 时不出 figcaption
+  const caption = b.caption?.trim()
+    ? `\n    <figcaption style="font-size:13px;line-height:1.7;color:#65675e;text-align:center;margin-top:10px;"><span leaf="">${esc(b.caption.trim())}</span></figcaption>`
+    : '';
+  return wrap(`
+  <figure style="font-family:'IBM Plex Sans',-apple-system,sans-serif;margin:0;">
+    <section style="border-radius:6px;overflow:hidden;border:1px solid #bfc1b7;display:block;">
+      <span leaf=""><img src="${src}" alt="${alt}" style="max-width:100%;height:auto;display:block;margin:0 auto;"></span>
+    </section>${caption}
+  </figure>`, first);
+}
+
 function closing(label: string, quote: InlineContent, first: boolean): string {
   return wrap(`
   <section style="background:#1e1f23;border:1px solid #23251d;padding:8px;box-sizing:border-box;border-radius:6px;font-family:'IBM Plex Sans',-apple-system,sans-serif;">
@@ -279,6 +294,8 @@ export function renderGzh(doc: GzhDoc): string {
         return pills(b.label, b.items, first);
       case 'dots':
         return dots(first);
+      case 'image':
+        return image(b, first);
       case 'closing':
         return closing(b.label ?? 'CLOSING', b.quote, first);
     }

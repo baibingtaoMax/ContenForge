@@ -63,7 +63,7 @@ export interface ChatMessage {
   skillMeta?: { skillId: string; skillName: string; task?: string }
   attachments?: Array<{ id: string; filename: string; categoryLabel: string; sizeBytes: number; category?: string; sourceUrl?: string | null }>
   /** ProtoForge：本条消息 @ 引用的需求（模块/页面） */
-  refRequirements?: Array<{ id: string; title: string; kind?: 'module' | 'page'; status?: string }>
+  refArticles?: Array<{ id: string; title: string; status?: string; seriesTitle?: string }>
   status?: string
   isStatus?: boolean
   requirementIds?: string[] // ProtoForge：该条消息沉淀出的需求 id
@@ -330,6 +330,25 @@ export interface StoredMessage {
   reasoning_content?: string | null
   skill_meta?: string | null // JSON string
   created_at: string
+}
+
+export interface WxmpConfigStatus {
+  configured: boolean
+  appId: string
+  hasSecret: boolean
+  credentialsPath: string
+}
+
+export interface WxmpTestResult {
+  ok: boolean
+  appId?: string
+  message?: string
+  stage?: 'config' | 'whitelist' | 'credentials' | 'unknown'
+  errcode?: number
+  currentIp?: string | null
+  error?: string
+  guide?: string
+  detail?: string
 }
 
 export interface ModelConfig {

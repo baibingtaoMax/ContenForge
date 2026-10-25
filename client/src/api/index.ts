@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Project, ProjectDetail, Conversation, StoredMessage, ModelConfig, SkillSummary, Requirement, RequirementVersion, DesignDecision } from '@/types'
+import type { Project, ProjectDetail, Conversation, StoredMessage, ModelConfig, SkillSummary, Requirement, RequirementVersion, DesignDecision, WxmpConfigStatus, WxmpTestResult } from '@/types'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
@@ -11,12 +11,12 @@ export async function sendMessage(
   conversationId?: string,
   attachments?: unknown[],
   forceSkillId?: string,
-  refRequirements?: unknown[]
+  refArticles?: unknown[]
 ) {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, projectId, conversationId, attachments: attachments || [], forceSkillId, refRequirements: refRequirements || [] }),
+    body: JSON.stringify({ message, projectId, conversationId, attachments: attachments || [], forceSkillId, refArticles: refArticles || [] }),
     signal
   })
   if (!response.ok) throw new Error(`请求失败: ${response.status}`)
@@ -299,6 +299,14 @@ export const updateModelConfig = (config: Partial<ModelConfig>) =>
 // 清空向量记忆库（换 embedding 模型后维度不匹配，重建用）
 export const rebuildMemory = () =>
   api.post<{ ok: boolean; removed: number }>('/config/memory/rebuild').then((r) => r.data)
+
+// ---------- 公众号配置 ----------
+export const getWxmpConfig = (): Promise<WxmpConfigStatus> =>
+  api.get('/config/wxmp').then((r) => r.data)
+export const updateWxmpConfig = (payload: { appId?: string; appSecret?: string }) =>
+  api.put<{ message: string } & WxmpConfigStatus>('/config/wxmp', payload).then((r) => r.data)
+export const testWxmpConfig = (): Promise<WxmpTestResult> =>
+  api.post('/config/wxmp/test', {}).then((r) => r.data)
 
 // 技能
 export interface SkillInput {
@@ -584,17 +592,265 @@ export const autoLayoutGzhApi = (
 ): Promise<{ ok: boolean; leafCount?: number; componentCount?: number; error?: string }> =>
   api.post(`/articles/${aid}/auto-layout`, {}, { timeout: 1_200_000 }).then((r) => r.data)
 
-// ContentForge：成品推送到公众号草稿箱（multipart：cover + meta）
-export const pushWxmpDraft = (
+// ContentForge：公众号正文配图方案（shot list，独立工序，不属于排版）
+export interface GzhShotCandidate {
+  relPath: string
+  url: string
+  bytes: number
+  width: number
+  height: number
+  createdAt: number
+}
+export interface GzhPlacement {
+  ok: boolean
+  via?: 'exact' | 'fuzzy'
+  blockIndex?: number
+  blockKind?: string
+  preview?: string
+}
+export interface GzhShot {
+  id: string
+  anchorSection: string
+  afterParagraph: string
+  anchorMatched?: boolean
+  placement?: GzhPlacement | null
+  intent: string
+  scene: string
+  prompt: string
+  status: 'prompt' | 'generated'
+  candidates?: GzhShotCandidate[]
+  selected?: string
+  adopted?: boolean
+  lastError?: string
+  lastErrorKind?: 'sensitive' | 'other'
+  lastErrorAt?: number
+  promptAutoRewritten?: boolean
+}
+
+export const generateGzhShots = (
+  aid: string
+): Promise<{ ok: boolean; shots?: GzhShot[]; error?: string }> =>
+  api.post(`/articles/${aid}/gzh-shots`, {}, { timeout: 300000 }).then((r) => r.data)
+
+export const updateGzhShot = (
   aid: string,
-  cover: File,
-  meta: { title?: string; author?: string; digest?: string }
-): Promise<{ ok: boolean; mediaId?: string; error?: string }> => {
+  sid: string,
+  patch: Partial<Pick<GzhShot, 'prompt' | 'intent' | 'scene' | 'anchorSection' | 'afterParagraph'>>
+): Promise<{ ok: boolean; shot: GzhShot }> =>
+  api.put(`/articles/${aid}/gzh-shots/${sid}`, patch).then((r) => r.data)
+
+export const deleteGzhShot = (aid: string, sid: string): Promise<{ ok: boolean }> =>
+  api.delete(`/articles/${aid}/gzh-shots/${sid}`).then((r) => r.data)
+
+// ContentForge：逐条生图（seedream，约 50-60s），返回带候选的 shot
+export const generateGzhShotImage = (
+  aid: string,
+  sid: string
+): Promise<{ ok: boolean; shot?: GzhShot; error?: string; errorKind?: 'sensitive' | 'other'; autoRewritten?: boolean }> =>
+  api.post(`/articles/${aid}/gzh-shots/${sid}/generate`, {}, { timeout: 180000 }).then((r) => r.data)
+
+// ContentForge：在多候选里选一张
+export const selectGzhShotCandidate = (
+  aid: string,
+  sid: string,
+  relPath: string
+): Promise<{ ok: boolean; shot: GzhShot }> =>
+  api.put(`/articles/${aid}/gzh-shots/${sid}/select`, { relPath }).then((r) => r.data)
+
+// ContentForge：采用 / 移出正文（只有采用的图进成品）
+export const adoptGzhShot = (
+  aid: string,
+  sid: string,
+  adopted: boolean
+): Promise<{ ok: boolean; shot?: GzhShot; merged?: { inserted: string[]; unmatched: string[]; placements?: Record<string, GzhPlacement> }; error?: string }> =>
+  api.put(`/articles/${aid}/gzh-shots/${sid}/adopt`, { adopted }).then((r) => r.data)
+
+// ContentForge：公众号封面元信息（每篇存一张，可更换）
+export interface WxmpCover {
+  relPath: string
+  url: string
+  filename: string
+  bytes: number
+  contentType: string
+  createdAt: number
+}
+
+// 上传 / 更换本篇封面（存盘 + 记进 extra.cover）
+export const uploadWxmpCover = (aid: string, cover: File) => {
   const fd = new FormData()
   fd.append('cover', cover)
-  fd.append('meta', JSON.stringify(meta))
-  return api.post(`/articles/${aid}/push-draft`, fd, {
-    headers: { 'content-type': 'multipart/form-data' },
-    timeout: 120000,
-  }).then((r) => r.data)
+  return api
+    .post(`/articles/${aid}/gzh-cover`, fd, {
+      headers: { 'content-type': 'multipart/form-data' },
+      timeout: 60000,
+    })
+    .then((r) => r.data as { ok: boolean; cover: WxmpCover })
 }
+
+// 删除本篇封面
+export const deleteWxmpCover = (aid: string): Promise<{ ok: boolean; removed: boolean }> =>
+  api.delete(`/articles/${aid}/gzh-cover`).then((r) => r.data)
+
+// ContentForge：成品推送到公众号草稿箱。
+// cover 可选：已存封面时不传文件（发 JSON）后端用已存封面，一键推送；
+// 首次传入 File 则顺带存档并用作本次封面。
+export const pushWxmpDraft = (
+  aid: string,
+  cover: File | null | undefined,
+  meta: { title?: string; author?: string; digest?: string }
+): Promise<{ ok: boolean; mediaId?: string; error?: string }> => {
+  if (cover) {
+    const fd = new FormData()
+    fd.append('cover', cover)
+    fd.append('meta', JSON.stringify(meta))
+    return api
+      .post(`/articles/${aid}/push-draft`, fd, {
+        headers: { 'content-type': 'multipart/form-data' },
+        timeout: 120000,
+      })
+      .then((r) => r.data)
+  }
+  return api.post(`/articles/${aid}/push-draft`, meta, { timeout: 120000 }).then((r) => r.data)
+}
+
+// ===== AI 封面工坊（两版×两比例） =====
+export type CoverArtKey = 'xiaohei-wide' | 'xiaohei-square' | 'magazine-wide' | 'magazine-square'
+export const COVER_ART_KEYS: CoverArtKey[] = ['xiaohei-wide', 'xiaohei-square', 'magazine-wide', 'magazine-square']
+
+export interface CoverStudioPlan {
+  issue: string
+  year: string
+  kicker: string
+  en: string
+  wideTitle: string
+  wideHl: string
+  squareTitle: string
+  squareHl: string
+  deck: string
+  quote: string
+  quoteHl: string
+  xiaoheiBody: string
+  magazineBody: string
+}
+export interface CoverArtImage { relPath: string; url: string; bytes: number; width: number; height: number; createdAt: number }
+export interface CoverRender { relPath: string; url: string; bytes: number; createdAt: number }
+export interface CoverStudioState {
+  plan: CoverStudioPlan
+  art: Partial<Record<CoverArtKey, CoverArtImage[]>>
+  selectedArt: Partial<Record<CoverArtKey, string>>
+  renders: Partial<Record<CoverArtKey, CoverRender[]>>
+  chosen?: CoverArtKey
+}
+
+const studioTimeout = { timeout: 240000 }
+
+export const getCoverStudio = (aid: string): Promise<{ ok: boolean; state: CoverStudioState | null }> =>
+  api.get(`/articles/${aid}/cover-studio`).then((r) => r.data)
+
+export const generateCoverPlan = (aid: string): Promise<{ ok: boolean; state: CoverStudioState; error?: string }> =>
+  api.post(`/articles/${aid}/cover-studio/plan`, {}, studioTimeout).then((r) => r.data)
+
+export const saveCoverPlan = (aid: string, patch: Partial<CoverStudioPlan>): Promise<{ ok: boolean; state: CoverStudioState }> =>
+  api.put(`/articles/${aid}/cover-studio/plan`, patch, { timeout: 30000 }).then((r) => r.data)
+
+export const generateCoverArt = (
+  aid: string,
+  key: CoverArtKey
+): Promise<{ ok: boolean; state: CoverStudioState; image: CoverArtImage; error?: string }> =>
+  api.post(`/articles/${aid}/cover-studio/art/${key}`, {}, studioTimeout).then((r) => r.data)
+
+export const renderCover = (
+  aid: string,
+  key?: CoverArtKey
+): Promise<{ ok: boolean; state?: CoverStudioState; render?: CoverRender; renders?: CoverRender[]; skipped?: CoverArtKey[]; error?: string }> =>
+  api.post(`/articles/${aid}/cover-studio/render`, key ? { key } : {}, { timeout: 180000 }).then((r) => r.data)
+
+export const chooseCover = (
+  aid: string,
+  key: CoverArtKey
+): Promise<{ ok: boolean; cover?: { relPath: string; url: string; filename: string; bytes: number; contentType: string; createdAt: number }; source?: 'render' | 'art'; error?: string }> =>
+  api.post(`/articles/${aid}/cover-studio/choose`, { key }, { timeout: 30000 }).then((r) => r.data)
+
+// ===================== 小红书知识卡片轮播 =====================
+
+export interface XhsCardRender {
+  relPath: string
+  url: string
+  width: number
+  height: number
+  bytes: number
+  createdAt: number
+}
+
+export interface XhsContentCard {
+  id: string
+  title: string
+  hl?: string
+  points: string[]
+  render?: XhsCardRender | null
+}
+
+export interface XhsCardDeck {
+  styleId: string
+  kicker: string
+  issue: string
+  cover: { title: string; hl?: string; deck: string; render?: XhsCardRender | null }
+  cards: XhsContentCard[]
+  closing: { quote: string; quoteHl?: string; cta: string; render?: XhsCardRender | null }
+  updatedAt: number
+}
+
+export interface XhsStyle {
+  id: string
+  name: string
+  description: string
+  builtin?: boolean
+  colors: { bg: string; ink: string; muted: string; accent: string; accentInk: string; line: string }
+  titleFont: 'serif' | 'hei' | 'dengxian' | 'kaiti' | 'fangsong'
+  bodyFont: 'serif' | 'hei' | 'dengxian' | 'kaiti' | 'fangsong'
+  kickerStyle: 'block' | 'pill' | 'plain'
+  highlightStyle: 'marker' | 'solid' | 'underline'
+  numberStyle: 'big' | 'circle' | 'none'
+  coverAlign: 'top' | 'center'
+  accentBar: boolean
+  cornerFrame: boolean
+  showWatermark: boolean
+  darkClosing: boolean
+}
+
+export const listXhsStyles = (): Promise<{ ok: boolean; styles: XhsStyle[] }> =>
+  api.get('/xhs-styles').then((r) => r.data)
+
+export const saveXhsStyle = (style: Partial<XhsStyle>): Promise<{ ok: boolean; style?: XhsStyle; error?: string }> =>
+  api.post('/xhs-styles', style).then((r) => r.data)
+
+export const deleteXhsStyle = (id: string): Promise<{ ok: boolean }> =>
+  api.delete(`/xhs-styles/${encodeURIComponent(id)}`).then((r) => r.data)
+
+export const designXhsStyle = (
+  brief: string,
+  articleId?: string
+): Promise<{ ok: boolean; style?: XhsStyle; error?: string }> =>
+  api.post('/xhs-styles/design', { brief, articleId }, { timeout: 120000 }).then((r) => r.data)
+
+export const getXhsDeck = (aid: string): Promise<{ ok: boolean; deck: XhsCardDeck | null }> =>
+  api.get(`/articles/${aid}/xhs-cards`).then((r) => r.data)
+
+export const generateXhsDeck = (
+  aid: string
+): Promise<{ ok: boolean; deck?: XhsCardDeck; error?: string }> =>
+  api.post(`/articles/${aid}/xhs-cards/generate`, {}, { timeout: 300000 }).then((r) => r.data)
+
+export const saveXhsDeck = (
+  aid: string,
+  patch: Partial<XhsCardDeck>
+): Promise<{ ok: boolean; deck?: XhsCardDeck; error?: string }> =>
+  api.put(`/articles/${aid}/xhs-cards`, patch).then((r) => r.data)
+
+export const renderXhsCard = (
+  aid: string,
+  cardId?: string
+): Promise<{ ok: boolean; deck?: XhsCardDeck; render?: XhsCardRender; rendered?: number; failed?: string[]; error?: string }> =>
+  api
+    .post(`/articles/${aid}/xhs-cards/render`, cardId ? { cardId } : {}, { timeout: 300000 })
+    .then((r) => r.data)

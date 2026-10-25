@@ -185,7 +185,6 @@ export interface MessageRow {
   assessment_id?: string | null;
   reasoning_content?: string | null;
   req_ids?: string | null; // ProtoForge：该条 assistant 消息沉淀出的需求 id 列表（JSON）
-  ref_requirements?: string | null; // ProtoForge：该条 user 消息 @ 引用的需求 id 列表（JSON）
   created_at: string;
 }
 

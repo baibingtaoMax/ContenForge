@@ -12,8 +12,8 @@ import {
   getConversationSummary,
   updateConversationSummary,
   getConversation,
-  getRequirement,
 } from '../store/database.js';
+import { getArticle } from '../store/contentStore.js';
 import { saveMemories } from './memory.js';
 import type { MessageRow } from '../types/index.js';
 
@@ -95,18 +95,18 @@ function formatMsg(m: MessageRow): { role: 'user' | 'assistant'; content: string
       }
     } catch { /* ignore */ }
   }
-  // user 消息 @ 了需求：提示模型当时聚焦的模块/页面（仅标题，不含全文，避免历史肨胀）
+  // user 消息选中了选题（文章）：提示模型当时聚焦的选题标题（全文需要时用 list_content / update_article）
   if (m.role === 'user') {
     try {
-      const refRaw = (m as any).ref_requirements;
-      if (refRaw) {
-        const ids = JSON.parse(refRaw) as Array<{ id?: string } | string>;
-        const titles = ids
-          .map((r) => (typeof r === 'string' ? getRequirement(r) : r?.id ? getRequirement(r.id) : null))
+      const aRaw = (m as any).ref_articles;
+      if (aRaw) {
+        const aIds = JSON.parse(aRaw) as Array<{ id?: string } | string>;
+        const aTitles = aIds
+          .map((x) => (typeof x === 'string' ? getArticle(x) : x?.id ? getArticle(x.id) : null))
           .filter(Boolean)
-          .map((r: any) => `${r.kind === 'page' ? '页面' : '模块'}《${r.title}》`);
-        if (titles.length > 0) {
-          content += `\n\n[本条消息 @ 聚焦了：${titles.join('、')}。需要这些需求的完整文档时用 list_project_requirements 获取。]`;
+          .map((a: any) => `《${a.title}》`);
+        if (aTitles.length > 0) {
+          content += `\n\n[本条消息选中了选题：${aTitles.join('、')}。需要正文/角度时用 list_content 查看，改稿用 update_article 带对应 articleId。]`;
         }
       }
     } catch { /* ignore */ }

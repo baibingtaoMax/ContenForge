@@ -20,6 +20,7 @@ import { decisionRoutes } from './routes/decisions.js';
 import { weeklyReportRoutes } from './routes/weeklyReport.js';
 import { chartAiRoutes } from './routes/chartAi.js';
 import { contentRoutes } from './routes/content.js';
+import { wxmpRoutes } from './routes/wxmp.js';
 import { seedBuiltinKits } from './store/writingKitStore.js';
 import { initMcpRegistry, closeAllMcpClients } from './mcp/registry.js';
 import { refreshMcpTools } from './tools/index.js';
@@ -70,6 +71,7 @@ async function main() {
   await app.register(weeklyReportRoutes);
   await app.register(chartAiRoutes);
   await app.register(contentRoutes);
+await app.register(wxmpRoutes);
 
   // 健康检查
   app.get('/api/health', async () => ({ status: 'ok' }));

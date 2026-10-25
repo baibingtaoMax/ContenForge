@@ -60,17 +60,16 @@
       </div>
 
       <div v-if="message.content" class="bubble user-bubble">{{ message.content }}</div>
-            <!-- @ 引用的需求：可点击跳到需求详情 -->
-            <div v-if="message.refRequirements?.length" class="ref-cards">
+            <!-- 选中的选题：可点击跳到内容计划该文章 -->
+            <div v-if="message.refArticles?.length" class="ref-cards">
               <button
-                v-for="r in message.refRequirements"
-                :key="r.id"
-                class="ref-card"
-                :class="r.kind === 'page' ? 'is-page' : 'is-module'"
-                @click="chatStore.previewRequirement(r.id)"
+                v-for="a in message.refArticles"
+                :key="a.id"
+                class="ref-card is-article"
+                @click="chatStore.requestOpenArticle(a.id)"
               >
-                <AppIcon :name="r.kind === 'page' ? 'file' : 'layers'" :size="13" />
-                <span class="ref-card-name">@{{ r.title }}</span>
+                <AppIcon name="bookmark" :size="13" />
+                <span class="ref-card-name">{{ a.title }}</span>
               </button>
             </div>
       <span v-if="message.timestamp && !(isLast && streaming)" class="msg-time user-time">{{ formatTime(message.timestamp) }}</span>
@@ -433,6 +432,12 @@ function formatTime(ts: number) {
     background: #f5faff;
     color: var(--pf-tint-sky, #2f7de1);
     &:hover { background: #eaf3ff; border-color: var(--pf-tint-sky, #2f7de1); }
+  }
+  &.is-article {
+    border-color: #bfe6d2;
+    background: #f3fbf6;
+    color: #047857;
+    &:hover { background: #e6f7ee; border-color: #047857; }
   }
 }
 

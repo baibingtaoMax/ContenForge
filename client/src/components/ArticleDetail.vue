@@ -34,7 +34,7 @@
           <span class="mt-hint">主稿是源头，渠道版本都从它适配。也可以直接让内容搭档在对话里写。</span>
           <el-button size="small" type="primary" :loading="savingMain" @click="saveMain">保存主稿</el-button>
         </div>
-        <MdEditor v-model="docVal" placeholder="# 标题&#10;&#10;在这里写主稿……" />
+        <MdEditor v-model="docVal" min-height="max(460px, calc(100vh - 300px))" placeholder="# 标题&#10;&#10;在这里写主稿……" />
       </el-tab-pane>
       <el-tab-pane v-for="c in CHANNELS" :key="c.key" :name="c.key">
         <template #label>

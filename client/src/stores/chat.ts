@@ -378,9 +378,9 @@ export const useChatStore = defineStore('chat', () => {
     if ((m as any).skill_meta) {
       try { skillMeta = JSON.parse((m as any).skill_meta) } catch { skillMeta = undefined }
     }
-    let refRequirements: ChatMessage['refRequirements']
-    if ((m as any).ref_requirements) {
-      try { refRequirements = JSON.parse((m as any).ref_requirements) } catch { refRequirements = undefined }
+    let refArticles: ChatMessage['refArticles']
+    if ((m as any).ref_articles) {
+      try { refArticles = JSON.parse((m as any).ref_articles) } catch { refArticles = undefined }
     }
     return {
       id: `hist-${m.id}`,
@@ -403,7 +403,7 @@ export const useChatStore = defineStore('chat', () => {
       requirementIds: (() => { try { return JSON.parse((m as any).req_ids || '[]') } catch { return [] } })(),
       poolIds: (() => { try { return JSON.parse((m as any).pool_ids || '[]') } catch { return [] } })(),
       decisionIds: (() => { try { return JSON.parse((m as any).decision_ids || '[]') } catch { return [] } })(),
-      refRequirements,
+      refArticles,
       timestamp: new Date(m.created_at).getTime()
     }
   }
@@ -725,7 +725,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // ---------- 发送 / 中断 ----------
-  async function send(text: string, attachmentMetas?: any[], refReqs?: Array<{ id: string; title: string; kind?: string; status?: string }>) {
+  async function send(text: string, attachmentMetas?: any[], refArts?: Array<{ id: string; title: string; status?: string; seriesTitle?: string }>) {
     const content = text.trim()
     if (!content && (!attachmentMetas || attachmentMetas.length === 0)) return
     // 快照待执行技能：新建对话时 currentConversationId 变化会触发 UI 的 watch 清空选中，
@@ -750,10 +750,10 @@ export const useChatStore = defineStore('chat', () => {
         sizeBytes: a.sizeBytes, sourceUrl: a.sourceUrl || null
       }))
     }
-    // 本条消息 @ 引用的需求（模块/页面）
-    if (refReqs?.length) {
-      userMsg.refRequirements = refReqs.map((r) => ({
-        id: r.id, title: r.title, kind: r.kind as 'module' | 'page' | undefined, status: r.status
+    // 本条消息选中的选题（内容计划文章）
+    if (refArts?.length) {
+      userMsg.refArticles = refArts.map((a) => ({
+        id: a.id, title: a.title, status: a.status, seriesTitle: a.seriesTitle
       }))
     }
 
@@ -785,7 +785,7 @@ export const useChatStore = defineStore('chat', () => {
         currentProjectId.value, cid,
         attachmentMetas,
         skillIdSnapshot || undefined,
-        refReqs
+        refArts
       )
       await pumpSSE(reader, cid)
     } catch (e: any) {

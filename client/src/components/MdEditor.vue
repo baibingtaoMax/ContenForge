@@ -18,6 +18,7 @@
     <textarea
       ref="taRefInner"
       class="md-textarea"
+      :style="{ minHeight: minHeight }"
       :value="modelValue"
       rows="10"
       :placeholder="placeholder"
@@ -35,8 +36,11 @@ const props = withDefaults(defineProps<{
   modelValue: string
   uploading?: boolean
   placeholder?: string
+  /** 编辑区最小高度，默认 220px；长文场景（如主稿）可传 calc(100vh - 320px) 等 */
+  minHeight?: string
 }>(), {
   placeholder: '背景、原话反馈、具体场景、待澄清的问题……可以多写，能贴截图',
+  minHeight: '220px',
 })
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void

@@ -74,6 +74,13 @@ export interface DotsBlock {
   kind: 'dots';
 }
 
+export interface ImageBlock {
+  kind: 'image';
+  src: string;        // 图片地址（成品里是可直接访问的 http 地址；推送时由 draft 转微信素材）
+  alt?: string;       // 无障碍描述
+  caption?: string;   // 图注；不传则只出图（转录主题库组件 19，无 figcaption）
+}
+
 export interface ClosingBlock {
   kind: 'closing';
   label?: string;   // 默认 CLOSING
@@ -91,6 +98,7 @@ export type GzhBlock =
   | CompareBlock
   | PillsBlock
   | DotsBlock
+  | ImageBlock
   | ClosingBlock;
 
 export interface GzhSignoff {
